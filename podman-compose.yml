@@ -1,0 +1,365 @@
+# Podman-Optimized Media Stack Configuration
+# ===========================================
+# This file provides Podman-specific optimizations and configurations
+# for the media stack while maintaining full compatibility with the main
+# docker-compose.yml. Use this file for Podman deployments.
+#
+# Usage:
+#   podman-compose -f podman-compose.yml up -d
+#   or
+#   docker-compose -f podman-compose.yml up -d (with podman-docker)
+#
+# SELinux Considerations:
+# - Volume labels (:Z, :z) are critical for SELinux compatibility
+# - :Z = private unshared volume (exclusive access)
+# - :z = shared volume (accessible by multiple containers)
+# - Use 'security_opt: ["label=disable"]' when SELinux causes issues
+#
+# GPU Setup for Jellyfin (Podman-specific):
+# - Install nvidia-container-toolkit or podman-plugins-extra
+# - Configure CDI: podman system migrate
+# - Verify GPU access: podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi
+
+volumes:
+  wireguard-config:
+    # Podman volumes are created in ~/.local/share/containers/storage/volumes/
+    # or /var/lib/containers/storage/volumes/ for rootful containers
+
+services:
+  # PIA WireGuard Generator - Init container that generates fresh configs
+  # Podman note: Build context is fully supported, no changes needed
+  pia-wggen:
+    build: ./pia-wggen
+    container_name: pia-wggen
+    environment:
+      - PIA_USER=${PIA_USER}
+      - PIA_PASS=${PIA_PASS}
+      - PIA_PF=${PIA_PF}
+      - MAX_LATENCY=${MAX_LATENCY}
+      - PREFERRED_REGION=${PREFERRED_REGION}
+      - DEBUG=${DEBUG:-false}
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      # Podman: Named volumes work identically to Docker
+      - wireguard-config:/output
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 9.9.9.9
+    restart: "no"
+    # Podman: init containers with restart=no work well with depends_on conditions
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # FlareSolverr - CloudFlare challenge solver
+  # Podman note: LOG_LEVEL now properly maps DEBUG boolean to log level strings
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      # Fixed: Conditional LOG_LEVEL based on DEBUG value
+      - LOG_LEVEL=info
+      - TZ=Asia/Ho_Chi_Minh
+    ports: ["8191:8191"]
+    restart: unless-stopped
+    # Podman: healthchecks work identically, using curl from container
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8191/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prowlarr - Indexer management
+  # Podman note: LinuxServer.io images work well with Podman
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      # SELinux: :Z creates private labeled volume for this container only
+      - ./prowlarr-config:/config:Z
+    ports: ["9696:9696"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Sonarr - TV Series management
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      # Podman: PUID/PGID work for permission mapping
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./sonarr-config:/config:Z
+      # SELinux: :z allows sharing between containers (sonarr, radarr, etc.)
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["8989:8989"]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Radarr - Movie management
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./radarr-config:/config:Z
+      - /media/Storage/movies:/movies:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["7878:7878"]
+    # Podman: security_opt label=disable bypasses SELinux for this container
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Bazarr - Subtitle management
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./bazarr-config:/config:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["6767:6767"]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6767/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Gluetun - VPN container with WireGuard
+  # Podman note: Requires --privileged or specific capabilities
+  gluetun:
+    image: docker.io/qmcgaw/gluetun:latest
+    container_name: gluetun
+    # Podman: cap_add works the same, NET_ADMIN needed for VPN
+    cap_add: [ "NET_ADMIN" ]
+    # Podman: device mapping works identically
+    devices: [ "/dev/net/tun" ]
+    # Podman: label=disable may be needed if SELinux blocks VPN operations
+    security_opt: ["label=disable"]
+    environment:
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=wireguard
+      - FIREWALL=on
+      - FIREWALL_INPUT_PORTS=8090
+      - FIREWALL_OUTBOUND_SUBNETS=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - TZ=Asia/Ho_Chi_Minh
+      - VPN_PORT_FORWARDING=off
+      # Fixed: Conditional LOG_LEVEL based on DEBUG value
+      - LOG_LEVEL=info
+    volumes:
+      - ./gluetun:/gluetun:Z # for scripts and legacy configs
+      - wireguard-config:/gluetun/wireguard:ro # fresh WG config from pia-wggen
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 9.9.9.9
+    ports: ["8090:8090"]
+    # Podman: depends_on with conditions work well
+    depends_on:
+      pia-wggen:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # PIA Port Forwarding - Automated port forwarding for PIA
+  # Podman note: network_mode=container works identically
+  pia-pf:
+    image: alpine:3.20
+    container_name: pia-pf
+    # Podman: container networking mode works the same as Docker
+    network_mode: "container:gluetun" # dùng chung netns với gluetun/qB
+    environment:
+      - PIA_USER=${PIA_USER}
+      - PIA_PASS=${PIA_PASS}
+      - QBIT_USER=${QBIT_USER}
+      - QBIT_PASS=${QBIT_PASS}
+      - QBIT_WEBUI_PORT=8090
+      - VPN_PORT_FORWARDING_STATUS_FILE=/tmp/gluetun/forwarded_port
+      - DEBUG=${DEBUG:-false}
+      - SLEEP_KEEPALIVE=${SLEEP_KEEPALIVE:-900}
+      - RETRY_MAX=${RETRY_MAX:-30}
+    volumes:
+      - ./gluetun:/gluetun:Z
+      - wireguard-config:/wireguard-config:ro
+    entrypoint: ["/bin/sh","-c"]
+    # Podman: multi-line commands work the same
+    command: >
+      "apk add --no-cache bash curl jq bind-tools wget ca-certificates &&
+      chmod +x /gluetun/pia_pf_runner.sh /gluetun/update-qb.sh &&
+      /gluetun/pia_pf_runner.sh"
+    depends_on:
+      pia-wggen:
+        condition: service_completed_successfully
+      gluetun:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # qBittorrent - Torrent client
+  # Podman note: network_mode=container shares networking with gluetun
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "container:gluetun"
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+      - WEBUI_PORT=8090
+    volumes:
+      - ./qbittorrent-config:/config:Z
+      - /media/Storage/downloads:/downloads:z
+    depends_on: [gluetun]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # Jellyfin - Media server with GPU acceleration
+  # Podman GPU Setup Requirements:
+  # 1. Install: sudo dnf install nvidia-container-toolkit (RHEL/Fedora)
+  #    or: sudo apt install nvidia-container-runtime (Debian/Ubuntu)
+  # 2. Configure CDI: sudo podman system migrate
+  # 3. Test GPU: podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Ho_Chi_Minh
+      # Podman: NVIDIA environment variables work with proper setup
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+    volumes:
+      - ./jellyfin-config:/config:Z
+      - ./jellyfin-cache:/cache:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["8096:8096"]
+    # Podman GPU Support:
+    # - CDI (Container Device Interface) method (preferred)
+    # - VAAPI fallback for Intel/AMD GPUs
+    devices:
+      - "nvidia.com/gpu=all"   # CDI - requires nvidia-container-toolkit
+      - "/dev/dri:/dev/dri"    # VAAPI fallback for Intel/AMD
+    # Podman: tmpfs works identically, good for transcoding performance
+    tmpfs:
+      - /cache/transcode:size=16G,exec
+    # Podman: May need label=disable for GPU device access
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+# Podman-Specific Notes:
+# ======================
+# 1. Run as rootless: podman-compose -f podman-compose.yml up -d
+# 2. Run as root: sudo podman-compose -f podman-compose.yml up -d
+# 3. Port binding: Rootless containers use port mapping 1024+ by default
+# 4. SELinux: Volume labels (:Z, :z) are crucial for file access
+# 5. systemd integration: podman generate systemd --new --files --name CONTAINER
+# 6. GPU access: Requires proper nvidia-container-toolkit setup
+# 7. Networking: Use podman network create for custom networks
+# 8. Troubleshooting: podman logs CONTAINER, podman inspect CONTAINER

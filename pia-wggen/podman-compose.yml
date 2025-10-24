@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # PIA WireGuard Generator - One-shot service optimized for Podman
+  pia-wggen:
+    build: .
+    environment:
+      - PIA_USER=${PIA_USER}
+      - PIA_PASS=${PIA_PASS}
+      - PIA_PF=true
+      - MAX_LATENCY=0.1
+    volumes:
+      # Using :Z for proper SELinux labeling on Fedora
+      - wireguard-config:/output:Z
+    restart: "no"
+    container_name: pia-wggen
+
+  # Example gluetun service for Podman integration
+  gluetun-example:
+    image: qmcgaw/gluetun
+    depends_on:
+      pia-wggen:
+        condition: service_completed_successfully
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=wireguard
+      # These would need to be populated from the generated config
+      # You'd need an additional init script to parse the generated config
+      # and set these environment variables for gluetun
+    volumes:
+      - wireguard-config:/gluetun/wireguard:ro,Z
+    ports:
+      - "8888:8888/tcp" # HTTP proxy
+      - "8388:8388/tcp" # Shadowsocks
+    restart: unless-stopped
+    profiles:
+      - gluetun  # Use profile to prevent auto-start
+    # Podman-specific: Use proper labeling for SELinux
+    security_opt:
+      - label=type:container_runtime_t
+
+volumes:
+  wireguard-config:
+    driver: local

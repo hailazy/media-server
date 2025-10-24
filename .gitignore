@@ -1,6 +1,13 @@
 # Environment files (keep .env.example, ignore actual .env)
 .env
 
+# Legacy components (archived for reference only)
+legacy/.env*
+legacy/*/wireguard/
+legacy/*/*.crt
+legacy/*/*.pem
+legacy/*/*.key
+
 # Configuration directories with sensitive data
 *-config/
 !*-config/.gitkeep
@@ -29,7 +36,7 @@ cache/
 transcodes/
 tmp/
 
-# Docker volumes and bind mounts data
+# Podman volumes and bind mounts data
 jellyfin-config/
 jellyfin-cache/
 qbittorrent-config/
