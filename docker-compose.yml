@@ -1,0 +1,177 @@
+version: "3.7"
+services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Asia/Ho_Chi_Minh
+    ports: ["8191:8191"]
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./prowlarr-config:/config:Z
+    ports: ["9696:9696"]
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./sonarr-config:/config:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["8989:8989"]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./radarr-config:/config:Z
+      - /media/Storage/movies:/movies:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["7878:7878"]
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./bazarr-config:/config:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["6767:6767"]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]
+
+  gluetun:
+    image: docker.io/qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add: [ "NET_ADMIN" ]
+    devices: [ "/dev/net/tun" ]
+    security_opt: ["label=disable"]
+    environment:
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=wireguard
+      - FIREWALL=on
+      - FIREWALL_INPUT_PORTS=8090
+      - FIREWALL_OUTBOUND_SUBNETS=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - TZ=Asia/Ho_Chi_Minh
+      - VPN_PORT_FORWARDING=off
+    volumes:
+        - ./gluetun:/gluetun:Z # chứa wireguard/wg0.conf
+    ports: ["8090:8090"]
+    restart: unless-stopped
+
+  # OPENVPN Setup Example
+  # gluetun:
+  #   image: docker.io/qmcgaw/gluetun:latest
+  #   container_name: gluetun
+  #   cap_add: [ "NET_ADMIN" ]
+  #   devices: [ "/dev/net/tun" ]
+  #   security_opt: [ "label=disable" ]
+  #   environment:
+  #     - VPN_SERVICE_PROVIDER=private internet access
+  #     - VPN_TYPE=openvpn
+  #     - OPENVPN_USER=${PIA_USER}
+  #     - OPENVPN_PASSWORD=${PIA_PASS}
+  #     - QBIT_USER=${QBIT_USER}
+  #     - QBIT_PASS=${QBIT_PASS}
+  #     - SERVER_REGIONS=Singapore
+  #     - VPN_PORT_FORWARDING=on
+  #     - VPN_PORT_FORWARDING_ONLY=on
+  #     - FIREWALL_INPUT_PORTS=8080
+  #     - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/update-qb.sh
+  #     - TZ=Asia/Ho_Chi_Minh
+  #   ports: ["8080:8080"]
+  #   volumes:
+  #     - ./gluetun:/gluetun:Z
+  #   restart: unless-stopped
+
+  pia-pf:
+    image: alpine:3.20
+    container_name: pia-pf
+    network_mode: "container:gluetun" # dùng chung netns với gluetun/qB
+    environment:
+      - PIA_USER=${PIA_USER}
+      - PIA_PASS=${PIA_PASS}
+      - QBIT_USER=${QBIT_USER}
+      - QBIT_PASS=${QBIT_PASS}
+      - QBIT_WEBUI_PORT=8090
+      - VPN_PORT_FORWARDING_STATUS_FILE=/tmp/gluetun/forwarded_port
+    volumes:
+      - ./gluetun:/gluetun:Z
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      "apk add --no-cache bash curl jq bind-tools wget ca-certificates &&
+      chmod +x /gluetun/pia_pf_runner.sh /gluetun/update-qb.sh &&
+      /gluetun/pia_pf_runner.sh"
+    depends_on: [gluetun]
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "container:gluetun"
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+      - WEBUI_PORT=8090
+    volumes:
+      - ./qbittorrent-config:/config:Z
+      - /media/Storage/downloads:/downloads:z
+    depends_on: [gluetun]
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Ho_Chi_Minh
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+    volumes:
+      - ./jellyfin-config:/config:Z
+      - ./jellyfin-cache:/cache:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["8096:8096"]
+    devices:
+      - "nvidia.com/gpu=all"   # CDI
+      - "/dev/dri:/dev/dri"    # VAAPI fallback
+    tmpfs:
+      - /cache/transcode:size=16G,exec
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]

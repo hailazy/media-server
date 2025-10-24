@@ -1,0 +1,19 @@
+
+you can use systemd commands like enable, start, stop, status, cat
+all without `sudo` like this:
+
+		systemctl --user enable --now 'podman-compose@media-stack'
+		systemctl --user status 'podman-compose@media-stack'
+		journalctl --user -xeu 'podman-compose@media-stack'
+
+and for that to work outside a session
+you might need to run the following command *once*
+
+		sudo loginctl enable-linger 'haint'
+
+you can use podman commands like:
+
+		podman pod ps
+		podman pod stats 'pod_media-stack'
+		podman pod logs --tail=10 -f 'pod_media-stack'
+

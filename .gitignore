@@ -1,0 +1,75 @@
+# Environment files (keep .env.example, ignore actual .env)
+.env
+
+# Configuration directories with sensitive data
+*-config/
+!*-config/.gitkeep
+
+# Backup files
+*.backup
+*.backup.*
+*.tar
+*.tar.gz
+*.zip
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# Database files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Cache directories
+*-cache/
+cache/
+transcodes/
+tmp/
+
+# Docker volumes and bind mounts data
+jellyfin-config/
+jellyfin-cache/
+qbittorrent-config/
+sonarr-config/
+radarr-config/
+prowlarr-config/
+bazarr-config/
+
+# VPN/Gluetun sensitive files
+gluetun/wireguard/
+gluetun/servers.json
+gluetun/*.crt
+gluetun/*.pem
+gluetun/*.key
+
+# VS Code settings (optional, uncomment if you want to ignore)
+# .vscode/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Node modules (if any)
+node_modules/
+
+# Python cache (if any)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
