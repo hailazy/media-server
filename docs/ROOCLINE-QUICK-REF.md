@@ -1,34 +1,34 @@
 # Media Stack Quick Reference - Roocline Optimization
 
-**🎯 RAPID CONTEXT**: Podman-based media automation stack with VPN protection, automated downloads, and media streaming. All traffic routed through PIA VPN with automatic WireGuard configuration generation.
+**🎯 RAPID CONTEXT**: Podman-based media automation stack with VPN protection, automated downloads, and media streaming. All traffic routed through AirVPN with static WireGuard configuration.
 
 ## 📖 Project Overview
 
 **What it does**: Complete automated media pipeline from search → download → organize → stream, all through secure VPN tunnel.
 
-**Core Tech Stack**: Podman containers + PIA VPN (WireGuard) + qBittorrent + Sonarr/Radarr + Jellyfin + automated port forwarding.
+**Core Tech Stack**: Podman containers + AirVPN (WireGuard) + qBittorrent + Sonarr/Radarr + Jellyfin + static port forwarding.
 
-**Key Innovation**: [`pia-wggen`](pia-wggen/) auto-generates fresh WireGuard configs on startup, eliminating manual VPN setup.
+**Key Innovation**: Static AirVPN WireGuard configuration from Config Generator, eliminating dynamic config generation complexity.
 
 ---
 
 ## 🎯 Critical File Priority (READ FIRST)
 
 ### **🔥 ESSENTIAL** (Start here for any issue)
-1. **[`podman-compose.yml`](podman-compose.yml:1)** - Main service definitions, dependencies, networking
-2. **[`.env`](.env)** / **[`.env.example`](.env.example:1)** - All configuration variables (PIA creds, ports, paths)
-3. **[`maintenance.sh`](maintenance.sh:1)** - Comprehensive debugging tool (`./maintenance.sh health`)
+1. **[`core/podman-compose.yml`](../core/podman-compose.yml:1)** - Main service definitions, dependencies, networking
+2. **[`core/.env`](../core/.env)** / **[`core/.env.example`](../core/.env.example:1)** - All configuration variables (AirVPN creds, ports, paths)
+3. **[`maintenance/maintenance.sh`](../maintenance/maintenance.sh:1)** - Comprehensive debugging tool (`./maintenance/maintenance.sh health`)
 
 ### **🔧 OPERATIONAL** (Daily use)
-4. **[`podman-up.sh`](podman-up.sh)** - Stack startup script
-5. **[`quick-debug.sh`](quick-debug.sh)** - Fast troubleshooting
-6. **[`podman-logs.sh`](podman-logs.sh)** - Log viewing utility
+4. **[`scripts/podman-up.sh`](../scripts/podman-up.sh)** - Stack startup script
+5. **[`maintenance/quick-debug.sh`](../maintenance/quick-debug.sh)** - Fast troubleshooting
+6. **[`scripts/podman-logs.sh`](../scripts/podman-logs.sh)** - Log viewing utility
 
 ### **📚 CONTEXTUAL** (Reference when needed)
-7. **[`README.md`](README.md:1)** - Complete documentation (863 lines)
-8. **[`PODMAN.md`](PODMAN.md:1)** - Podman-specific setup guide
-9. **[`gluetun/pia_pf_runner.sh`](gluetun/pia_pf_runner.sh:1)** - Port forwarding automation
-10. **[`gluetun/update-qb.sh`](gluetun/update-qb.sh:1)** - qBittorrent port updates
+7. **[`docs/README.md`](../docs/README.md:1)** - Complete documentation (996 lines)
+8. **[`docs/PODMAN.md`](../docs/PODMAN.md:1)** - Podman-specific setup guide
+9. **[`docs/AIRVPN-VALIDATION-CHECKLIST.md`](../docs/AIRVPN-VALIDATION-CHECKLIST.md:1)** - AirVPN validation guide
+10. **[`services/gluetun/servers.json`](../services/gluetun/servers.json:1)** - AirVPN server configurations
 
 ---
 
@@ -37,56 +37,55 @@
 ### **Core Operations**
 ```bash
 # Start entire stack
-./podman-up.sh
+./scripts/podman-up.sh
 
 # Stop stack  
-./podman-down.sh
+./scripts/podman-down.sh
 
 # View all logs
-./podman-logs.sh
+./scripts/podman-logs.sh
 
 # Health check (MOST IMPORTANT)
-./maintenance.sh health
+./maintenance/maintenance.sh health
 ```
 
 ### **Debug & Troubleshooting**
 ```bash
 # Enable debug mode
-./maintenance.sh debug-enable
+./maintenance/maintenance.sh debug-enable
 
 # Quick health check
-./quick-debug.sh
+./maintenance/quick-debug.sh
 
 # VPN troubleshooting
-./maintenance.sh troubleshoot-vpn
+./maintenance/maintenance.sh troubleshoot-vpn
 
 # Full diagnostic collection
-./maintenance.sh diagnostic
+./maintenance/maintenance.sh diagnostic
 ```
 
 ### **Manual Podman Commands**
 ```bash
 # Start with compose
-podman-compose -f podman-compose.yml up -d
+podman-compose -f core/podman-compose.yml up -d
 
 # View specific service logs
-podman-compose logs -f gluetun
+podman-compose -f core/podman-compose.yml logs -f gluetun
 
 # Check service status
-podman-compose ps
+podman-compose -f core/podman-compose.yml ps
 
 # Test VPN IP
-podman-compose exec gluetun wget -qO- https://ipinfo.io
+podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
 ```
 
 ### **Emergency/Recovery**
 ```bash
-# Regenerate VPN config
-podman-compose run --rm pia-wggen
-podman-compose restart gluetun
+# Restart VPN service
+podman-compose -f core/podman-compose.yml restart gluetun
 
 # Full restart with fresh configs
-podman-compose down && podman-compose up -d --force-recreate
+podman-compose -f core/podman-compose.yml down && podman-compose -f core/podman-compose.yml up -d --force-recreate
 
 # Clean up everything
 podman system prune -af
@@ -98,9 +97,9 @@ podman system prune -af
 
 ### **Dependency Chain**
 ```
-pia-wggen → gluetun → qbittorrent → media services
-     ↓         ↓          ↓             ↓
-   WG Config  VPN+PF   Downloads    Organization
+gluetun (AirVPN) → qbittorrent → media services
+      ↓               ↓             ↓
+   VPN+PF         Downloads    Organization
 ```
 
 ### **Critical Services & Ports**
@@ -115,16 +114,16 @@ pia-wggen → gluetun → qbittorrent → media services
 
 ### **Key Environment Variables**
 ```bash
-# REQUIRED (from .env)
-PIA_USER=p1234567              # PIA username
-PIA_PASS=your_password         # PIA password  
-QBIT_USER=admin               # qBittorrent web UI user
-QBIT_PASS=secure_password     # qBittorrent web UI password
+# REQUIRED (from core/.env)
+AIRVPN_WIREGUARD_PRIVATE_KEY=your_private_key_here    # From AirVPN Config Generator
+AIRVPN_WIREGUARD_ADDRESSES=your_addresses_here        # From AirVPN Config Generator
+QBIT_USER=admin                                       # qBittorrent web UI user
+QBIT_PASS=secure_password                            # qBittorrent web UI password
 
 # IMPORTANT
-PIA_PF=true                   # Enable port forwarding
-MAX_LATENCY=0.05             # Server selection latency (seconds)
-DEBUG=false                  # Enable debug logging (set true for troubleshooting)
+AIRVPN_PORT_FORWARDING=true                          # Enable AirVPN port forwarding
+AIRVPN_SERVER_COUNTRIES=SG                          # Preferred server countries (Singapore for Vietnam)
+DEBUG=false                                          # Enable debug logging (set true for troubleshooting)
 ```
 
 ---
@@ -133,26 +132,26 @@ DEBUG=false                  # Enable debug logging (set true for troubleshootin
 
 ### **VPN Connection Failed**
 ```bash
-# Check WireGuard config generation
-podman-compose logs pia-wggen
+# Check AirVPN WireGuard configuration
+podman-compose -f core/podman-compose.yml logs gluetun
 
-# Regenerate fresh config
-podman-compose run --rm pia-wggen
+# Verify AirVPN credentials in core/.env
+grep -E "(AIRVPN_WIREGUARD_PRIVATE_KEY|AIRVPN_WIREGUARD_ADDRESSES)" core/.env
 
-# Verify PIA credentials in .env
-grep -E "(PIA_USER|PIA_PASS)" .env
+# Restart VPN service
+podman-compose -f core/podman-compose.yml restart gluetun
 ```
 
 ### **Port Forwarding Not Working**
 ```bash
-# Check forwarded port
-podman-compose exec gluetun cat /tmp/gluetun/forwarded_port
+# Check AirVPN port forwarding status
+podman-compose -f core/podman-compose.yml logs gluetun | grep -i "port"
 
-# Check PIA-PF logs
-podman-compose logs pia-pf
+# Verify AirVPN_PORT_FORWARDING=true in core/.env
+grep AIRVPN_PORT_FORWARDING core/.env
 
-# Verify PIA_PF=true in .env
-grep PIA_PF .env
+# Check AirVPN account port forwarding settings
+# Visit: https://airvpn.org/client/ → Forwarded Ports
 ```
 
 ### **Downloads Stuck/Slow**
@@ -161,7 +160,7 @@ grep PIA_PF .env
 curl http://localhost:8080
 
 # Verify VPN IP is different from host
-podman-compose exec gluetun wget -qO- https://ipinfo.io
+podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
 
 # Check available disk space
 df -h /media/Storage
@@ -170,44 +169,53 @@ df -h /media/Storage
 ### **Services Not Accessible**
 ```bash
 # Check all service status
-./maintenance.sh health
+./maintenance/maintenance.sh health
 
 # Restart specific service
-podman-compose restart SERVICE_NAME
+podman-compose -f core/podman-compose.yml restart SERVICE_NAME
 
 # Check if ports are bound correctly
 podman port --all
 ```
 
 ### **Debug Workflow**
-1. **Quick Check**: `./maintenance.sh health`
-2. **Enable Debug**: `./maintenance.sh debug-enable` 
-3. **Restart Services**: `podman-compose restart`
-4. **Collect Logs**: `./maintenance.sh diagnostic`
-5. **Check Specific Issue**: `./maintenance.sh troubleshoot-vpn|pf|dl`
+1. **Quick Check**: `./maintenance/maintenance.sh health`
+2. **Enable Debug**: `./maintenance/maintenance.sh debug-enable` 
+3. **Restart Services**: `podman-compose -f core/podman-compose.yml restart`
+4. **Collect Logs**: `./maintenance/maintenance.sh diagnostic`
+5. **Check Specific Issue**: `./maintenance/maintenance.sh troubleshoot-vpn`
 
 ---
 
 ## ⚙️ Configuration Essentials
 
-### **Must-Configure Variables** ([`.env.example:1`](.env.example:1))
+### **Must-Configure Variables** ([`core/.env.example:1`](../core/.env.example:1))
 ```bash
 # Copy and edit
-cp .env.example .env
+cp core/.env.example .env
 
-# REQUIRED - PIA Account
-PIA_USER=p1234567
-PIA_PASS=your_password
+# REQUIRED - AirVPN Account
+AIRVPN_WIREGUARD_PRIVATE_KEY=your_private_key_here
+AIRVPN_WIREGUARD_ADDRESSES=your_addresses_here
 
 # REQUIRED - qBittorrent Web UI  
 QBIT_USER=admin
 QBIT_PASS=secure_password
 
 # RECOMMENDED
-PIA_PF=true                    # Better download speeds
-MAX_LATENCY=0.05              # Optimal server selection
-DEBUG=false                   # Enable for troubleshooting
+AIRVPN_PORT_FORWARDING=true       # Better download speeds
+AIRVPN_SERVER_COUNTRIES=SG        # Optimal server selection (Singapore for Vietnam)
+DEBUG=false                       # Enable for troubleshooting
 ```
+
+### **AirVPN Setup Guide**
+1. **Create Account**: Visit https://airvpn.org/
+2. **Purchase Subscription**: Choose your plan
+3. **Access Config Generator**: Client Area → Config Generator
+4. **Select WireGuard**: Choose WireGuard protocol
+5. **Choose Servers**: Singapore recommended for Vietnam users
+6. **Generate Config**: Extract PrivateKey and Address values
+7. **Configure Port Forwarding**: Client Area → Forwarded Ports (optional)
 
 ### **Important Paths**
 | Path | Purpose | Notes |
@@ -215,15 +223,16 @@ DEBUG=false                   # Enable for troubleshooting
 | `/media/Storage/downloads` | qBittorrent downloads | Must exist, adequate space |
 | `/media/Storage/movies` | Radarr movie library | Jellyfin serves from here |
 | `/media/Storage/tv-shows` | Sonarr TV library | Jellyfin serves from here |
-| `./gluetun/` | VPN scripts and configs | Contains [`pia_pf_runner.sh`](gluetun/pia_pf_runner.sh:1) |
-| `wireguard-config` volume | Fresh WG configs | Auto-generated by pia-wggen |
+| `./core/` | Core configuration files | Contains podman-compose.yml, .env |
+| `./services/gluetun/` | AirVPN configurations | Contains servers.json |
 
 ### **Security Considerations**
 - **Strong passwords**: Use unique passwords for all services
-- **PIA credentials**: Keep secure, enable 2FA if available
+- **AirVPN credentials**: Keep secure, enable 2FA if available
 - **File permissions**: Ensure media directories accessible
 - **Debug mode**: Disable in production (may expose sensitive info)
 - **VPN verification**: Always verify external IP differs from host
+- **WireGuard keys**: Never share your private key
 
 ---
 
@@ -232,10 +241,10 @@ DEBUG=false                   # Enable for troubleshooting
 ### **Quick Status**
 ```bash
 # Overall health (BEST FIRST CHECK)
-./maintenance.sh health
+./maintenance/maintenance.sh health
 
 # Service status
-podman-compose ps
+podman-compose -f core/podman-compose.yml ps
 
 # Resource usage
 podman stats --no-stream
@@ -244,20 +253,20 @@ podman stats --no-stream
 ### **VPN Verification**
 ```bash
 # Check VPN IP
-podman-compose exec gluetun wget -qO- https://ipinfo.io
+podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
 
-# Test port forwarding
-podman-compose exec gluetun cat /tmp/gluetun/forwarded_port
+# Test port forwarding (if enabled)
+podman-compose -f core/podman-compose.yml logs gluetun | grep -i "port"
 
 # VPN logs
-podman-compose logs -f gluetun | grep -E "(VPN|connection|port)"
+podman-compose -f core/podman-compose.yml logs -f gluetun | grep -E "(VPN|connection|port)"
 ```
 
 ### **Service Connectivity**
 ```bash
 # Test internal connectivity
-podman-compose exec sonarr curl http://prowlarr:9696
-podman-compose exec radarr curl http://gluetun:8080
+podman-compose -f core/podman-compose.yml exec sonarr curl http://prowlarr:9696
+podman-compose -f core/podman-compose.yml exec radarr curl http://gluetun:8080
 
 # Test web interfaces
 curl -I http://localhost:9696  # Prowlarr
@@ -270,21 +279,21 @@ curl -I http://localhost:8096  # Jellyfin
 
 ### **Setup** (First Time)
 - [ ] Clone repository
-- [ ] `cp .env.example .env` and configure PIA credentials
+- [ ] `cp core/.env.example .env` and configure AirVPN credentials
 - [ ] `mkdir -p /media/Storage/{downloads,movies,tv-shows}`
-- [ ] `./podman-up.sh`
-- [ ] `./maintenance.sh health`
+- [ ] `./scripts/podman-up.sh`
+- [ ] `./maintenance/maintenance.sh health`
 
 ### **Daily Operations**
-- [ ] Check health: `./maintenance.sh health`
-- [ ] Monitor logs: `./podman-logs.sh`
-- [ ] Verify VPN: `podman-compose exec gluetun wget -qO- https://ipinfo.io`
+- [ ] Check health: `./maintenance/maintenance.sh health`
+- [ ] Monitor logs: `./scripts/podman-logs.sh`
+- [ ] Verify VPN: `podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io`
 
 ### **Weekly Maintenance**
-- [ ] `./maintenance.sh cleanup`
-- [ ] Regenerate VPN config: `podman-compose run --rm pia-wggen`
-- [ ] Update containers: `podman-compose pull && podman-compose up -d`
+- [ ] `./maintenance/maintenance.sh cleanup`
+- [ ] Update containers: `podman-compose -f core/podman-compose.yml pull && podman-compose -f core/podman-compose.yml up -d`
+- [ ] Check AirVPN account status at https://airvpn.org/client/
 
 ---
 
-**🚀 TIP FOR ROOCLINE**: Start with `./maintenance.sh health` for any issue. It covers 90% of common problems and provides specific guidance for failures. Enable `DEBUG=true` in [`.env`](.env) when troubleshooting complex issues.
+**🚀 TIP FOR ROOCLINE**: Start with `./maintenance/maintenance.sh health` for any issue. It covers 90% of common problems and provides specific guidance for failures. Enable `DEBUG=true` in [`core/.env`](../core/.env) when troubleshooting complex issues.
