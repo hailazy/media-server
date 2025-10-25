@@ -9,8 +9,8 @@ legacy/*/*.pem
 legacy/*/*.key
 
 # Configuration directories with sensitive data
-*-config/
-!*-config/.gitkeep
+configs/
+!configs/**/.gitkeep
 
 # Backup files
 *.backup
@@ -31,19 +31,9 @@ logs/
 *.sqlite3
 
 # Cache directories
-*-cache/
 cache/
 transcodes/
 tmp/
-
-# Podman volumes and bind mounts data
-jellyfin-config/
-jellyfin-cache/
-qbittorrent-config/
-sonarr-config/
-radarr-config/
-prowlarr-config/
-bazarr-config/
 
 # VPN/Gluetun sensitive files
 gluetun/wireguard/

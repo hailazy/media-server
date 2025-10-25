@@ -1,0 +1,314 @@
+# Podman-Optimized Media Stack Configuration
+# ===========================================
+# This file provides Podman-specific optimizations and configurations
+# for the media stack while maintaining full compatibility with the main
+# docker-compose.yml. Use this file for Podman deployments.
+#
+# Usage:
+#   podman-compose -f podman-compose.yml up -d
+#   or
+#   docker-compose -f podman-compose.yml up -d (with podman-docker)
+#
+# SELinux Considerations:
+# - Volume labels (:Z, :z) are critical for SELinux compatibility
+# - :Z = private unshared volume (exclusive access)
+# - :z = shared volume (accessible by multiple containers)
+# - Use 'security_opt: ["label=disable"]' when SELinux causes issues
+#
+# GPU Setup for Jellyfin (Podman-specific):
+# - Install nvidia-container-toolkit or podman-plugins-extra
+# - Configure CDI: podman system migrate
+# - Verify GPU access: podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi
+
+volumes:
+
+services:
+  # FlareSolverr - CloudFlare challenge solver
+  # Podman note: LOG_LEVEL now properly maps DEBUG boolean to log level strings
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      # Fixed: Conditional LOG_LEVEL based on DEBUG value
+      - LOG_LEVEL=info
+      - TZ=Asia/Ho_Chi_Minh
+    ports: ["8191:8191"]
+    restart: unless-stopped
+    # Podman: healthchecks work identically, using curl from container
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8191/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prowlarr - Indexer management
+  # Podman note: LinuxServer.io images work well with Podman
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      # SELinux: :Z creates private labeled volume for this container only
+      - ../configs/prowlarr:/config:Z
+    ports: ["9696:9696"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Sonarr - TV Series management
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      # Podman: PUID/PGID work for permission mapping
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ../configs/sonarr:/config:Z
+      # SELinux: :z allows sharing between containers (sonarr, radarr, etc.)
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["8989:8989"]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Radarr - Movie management
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ../configs/radarr:/config:Z
+      - /media/Storage/movies:/movies:z
+      - /media/Storage/downloads:/downloads:z
+    ports: ["7878:7878"]
+    # Podman: security_opt label=disable bypasses SELinux for this container
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ prowlarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Bazarr - Subtitle management
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ../configs/bazarr:/config:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["6767:6767"]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6767/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Gluetun - VPN container with WireGuard (AirVPN Configuration)
+  # Podman note: Requires --privileged or specific capabilities
+  gluetun:
+    image: docker.io/qmcgaw/gluetun:latest
+    container_name: gluetun
+    # Podman: cap_add works the same, NET_ADMIN needed for VPN
+    cap_add: [ "NET_ADMIN" ]
+    # Podman: device mapping works identically
+    devices: [ "/dev/net/tun" ]
+    # Podman: label=disable may be needed if SELinux blocks VPN operations
+    security_opt: ["label=disable"]
+    environment:
+      # AirVPN Configuration
+      - VPN_SERVICE_PROVIDER=airvpn
+      - VPN_TYPE=wireguard
+      - FIREWALL=on
+      - FIREWALL_INPUT_PORTS=8080
+      - FIREWALL_OUTBOUND_SUBNETS=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - TZ=Asia/Ho_Chi_Minh
+      # AirVPN supports automatic port forwarding
+      - VPN_PORT_FORWARDING=${AIRVPN_PORT_FORWARDING}
+      # Fixed: Conditional LOG_LEVEL based on DEBUG value
+      - LOG_LEVEL=info
+      # Enhanced DNS configuration for reliability
+      - DNS_ADDRESS=1.1.1.1
+      - DNS_KEEP_NAMESERVER=on
+      - BLOCK_MALICIOUS=off
+      - BLOCK_ADS=off
+      - BLOCK_SURVEILLANCE=off
+      - UNBLOCK=on
+      - DNS_UPDATE_PERIOD=24h
+      
+      # AirVPN Credentials - Loaded from .env file
+      # Get these from your AirVPN account configuration generator
+      # Go to: https://airvpn.org/generator/ and generate WireGuard config
+      - WIREGUARD_PRIVATE_KEY=${AIRVPN_WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${AIRVPN_WIREGUARD_ADDRESSES}
+      - WIREGUARD_PRESHARED_KEY=${AIRVPN_WIREGUARD_PRESHARED_KEY}
+      # Optional: Specify server countries (e.g., "Netherlands,Germany,Switzerland")
+      - SERVER_COUNTRIES=${AIRVPN_SERVER_COUNTRIES}
+      # Optional: Specify specific server names
+      - SERVER_NAMES=${AIRVPN_SERVER_NAMES}
+    volumes:
+      - ../services/gluetun:/gluetun:Z # for scripts and legacy configs
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 9.9.9.9
+    ports: ["8080:8080"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9999"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # qBittorrent - Torrent client
+  # Podman note: network_mode=container shares networking with gluetun
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "container:gluetun"
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=002
+      - TZ=Asia/Ho_Chi_Minh
+      - WEBUI_PORT=8080
+    volumes:
+      - ../configs/qbittorrent:/config:Z
+      - /media/Storage/downloads:/downloads:z
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # Jellyfin - Media server with GPU acceleration
+  # Podman GPU Setup Requirements:
+  # 1. Install: sudo dnf install nvidia-container-toolkit (RHEL/Fedora)
+  #    or: sudo apt install nvidia-container-runtime (Debian/Ubuntu)
+  # 2. Configure CDI: sudo podman system migrate
+  # 3. Test GPU: podman run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Ho_Chi_Minh
+      # Podman: NVIDIA environment variables work with proper setup
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+    volumes:
+      - ../configs/jellyfin:/config:Z
+      - ../configs/jellyfin-cache:/cache:Z
+      - /media/Storage/tv-shows:/tv:z
+      - /media/Storage/movies:/movies:z
+    ports: ["8096:8096"]
+    # Podman GPU Support:
+    # - CDI (Container Device Interface) method (preferred)
+    # - VAAPI fallback for Intel/AMD GPUs
+    devices:
+      - "nvidia.com/gpu=all"   # CDI - requires nvidia-container-toolkit
+      - "/dev/dri:/dev/dri"    # VAAPI fallback for Intel/AMD
+    # Podman: tmpfs works identically, good for transcoding performance
+    tmpfs:
+      - /cache/transcode:size=16G,exec
+    # Podman: May need label=disable for GPU device access
+    security_opt: [ "label=disable" ]
+    restart: unless-stopped
+    depends_on: [ sonarr, radarr ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+# Podman-Specific Notes:
+# ======================
+# 1. Run as rootless: podman-compose -f podman-compose.yml up -d
+# 2. Run as root: sudo podman-compose -f podman-compose.yml up -d
+# 3. Port binding: Rootless containers use port mapping 1024+ by default
+# 4. SELinux: Volume labels (:Z, :z) are crucial for file access
+# 5. systemd integration: podman generate systemd --new --files --name CONTAINER
+# 6. GPU access: Requires proper nvidia-container-toolkit setup
+# 7. Networking: Use podman network create for custom networks
+# 8. Troubleshooting: podman logs CONTAINER, podman inspect CONTAINER
