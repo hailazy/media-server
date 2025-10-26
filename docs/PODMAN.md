@@ -504,23 +504,58 @@ podman system info  # Podman system information
 # - Port binding limited to 1024+ (use port mapping)
 # - Some volume mount limitations
 # - cgroups v2 benefits
+# - Performance sysctls disabled (requires root privileges)
 
 # Configuration:
 podman-compose -f podman-compose.yml up -d  # automatically rootless
 ```
 
-#### Rootful Podman (For maximum compatibility)
+**Performance Optimization Limitations in Rootless Mode:**
+
+The [`core/podman-compose.yml`](../core/podman-compose.yml) file has been optimized for rootless compatibility. The following sysctls are commented out for rootless mode but can be enabled when running as root:
+
+```yaml
+# ROOTLESS COMPATIBILITY NOTE:
+# The following sysctls require root privileges and are commented out for rootless mode.
+# To use these optimizations, run with: sudo podman-compose up -d
+# sysctls:
+#   - "net.core.rmem_max=134217728"      # Network buffer optimization (requires root)
+#   - "net.core.wmem_max=134217728"      # Network buffer optimization (requires root)
+#   - "vm.dirty_ratio=5"                 # NVMe write performance optimization (requires root)
+#   - "vm.dirty_background_ratio=2"      # Background writeback optimization (requires root)
+```
+
+Additionally, tmpfs mount options have been simplified for rootless compatibility:
+```yaml
+# Before (rootful only):
+tmpfs:
+  - /tmp/jellyfin:size=20G,noatime,nodev,nosuid,exec,uid=0,gid=0,mode=1777
+
+# After (rootless compatible):
+tmpfs:
+  - /tmp/jellyfin:size=20G,noatime,nodev,nosuid,exec,mode=1777
+```
+
+#### Rootful Podman (For maximum compatibility and performance)
 ```bash
 # Advantages:
 # - Full port range access (1-65535)
 # - Better volume mount compatibility
 # - Closer Docker parity
+# - Full performance optimizations including sysctls
+# - Complete kernel-level tuning capabilities
 
 # Usage:
 sudo podman-compose -f podman-compose.yml up -d
 
 # Security consideration: Containers run as root
 ```
+
+**Performance Benefits of Rootful Mode:**
+- Network buffer optimizations (128MB receive/send buffers)
+- NVMe write performance optimization (vm.dirty_ratio=5)
+- Background writeback optimization (vm.dirty_background_ratio=2)
+- Full tmpfs mount options with uid/gid control
 
 ### Memory and CPU Optimization
 

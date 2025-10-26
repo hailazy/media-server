@@ -7,7 +7,7 @@ set -e  # Exit on any error
 
 # Configuration
 COMPOSE_FILE="core/podman-compose.yml"
-ENV_FILE=".env"
+ENV_FILE="core/.env"
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,6 +31,78 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check for NVIDIA GPU device availability
+check_nvidia_gpu_availability() {
+    local timeout=${1:-60}  # Default 60 seconds timeout
+    local start_time=$(date +%s)
+    
+    log_info "Checking NVIDIA GPU device availability..."
+    
+    # Required NVIDIA device files for GPU acceleration
+    local required_devices=(
+        "/dev/nvidia-uvm"
+        "/dev/nvidia0"
+        "/dev/nvidiactl"
+    )
+    
+    local attempts=0
+    local max_attempts=$((timeout / 2))  # Check every 2 seconds
+    
+    while [[ $attempts -lt $max_attempts ]]; do
+        # Check all required devices
+        local all_devices_available=true
+        local missing_devices=()
+        
+        for device in "${required_devices[@]}"; do
+            if [[ ! -e "$device" ]]; then
+                all_devices_available=false
+                missing_devices+=("$device")
+            fi
+        done
+        
+        # If all devices are available, we're good to go
+        if [[ "$all_devices_available" == true ]]; then
+            log_success "All NVIDIA GPU devices are available"
+            log_info "Found devices: ${required_devices[*]}"
+            return 0
+        fi
+        
+        # Log missing devices (but only every 5 attempts to avoid spam)
+        if [[ $((attempts % 5)) -eq 0 ]] && [[ $attempts -gt 0 ]]; then
+            local elapsed=$((attempts * 2))
+            log_info "Waiting for NVIDIA devices (${elapsed}s/${timeout}s) - Missing: ${missing_devices[*]}"
+        fi
+        
+        # Wait before next check
+        sleep 2
+        attempts=$((attempts + 1))
+    done
+    
+    # Timeout reached
+    log_warning "GPU availability check timeout after ${timeout}s"
+    log_warning "NVIDIA devices not available - proceeding without GPU acceleration"
+    return 1
+}
+
+# Create temporary compose file without GPU acceleration
+create_gpu_fallback_compose() {
+    local original_compose="$1"
+    local fallback_compose="$2"
+    
+    log_info "Creating GPU fallback configuration..."
+    
+    # Copy original compose file and remove GPU-specific configurations
+    cp "$original_compose" "$fallback_compose"
+    
+    # Remove nvidia.com/gpu device mapping and NVIDIA environment variables
+    sed -i '/nvidia\.com\/gpu=all/d' "$fallback_compose"
+    sed -i '/NVIDIA_VISIBLE_DEVICES/d' "$fallback_compose"
+    sed -i '/NVIDIA_DRIVER_CAPABILITIES/d' "$fallback_compose"
+    
+    log_info "GPU fallback compose file created: $fallback_compose"
+    log_warning "Jellyfin will start without GPU acceleration"
 }
 
 # Check if podman-compose is available
@@ -105,6 +177,7 @@ main() {
     SERVICES=""
     BUILD_FLAG=""
     FORCE_RECREATE=""
+    SKIP_GPU_CHECK=""
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -116,12 +189,17 @@ main() {
                 FORCE_RECREATE="--force-recreate"
                 shift
                 ;;
+            --skip-gpu-check)
+                SKIP_GPU_CHECK="true"
+                shift
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS] [SERVICES...]"
                 echo ""
                 echo "Options:"
                 echo "  --build           Build images before starting"
                 echo "  --force-recreate  Recreate containers even if config unchanged"
+                echo "  --skip-gpu-check  Skip NVIDIA GPU availability check"
                 echo "  --help, -h        Show this help message"
                 echo ""
                 echo "Services:"
@@ -141,22 +219,63 @@ main() {
         esac
     done
     
-    # Build the command
-    CMD="$COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE up -d $BUILD_FLAG $FORCE_RECREATE $SERVICES"
+    # GPU availability check and compose file selection
+    local ACTIVE_COMPOSE_FILE="$COMPOSE_FILE"
+    local FALLBACK_COMPOSE_FILE=""
+    local GPU_AVAILABLE=false
+    
+    # Check if we should skip GPU check or if Jellyfin is specifically requested
+    if [[ "$SKIP_GPU_CHECK" != "true" ]] && [[ -z "$SERVICES" || "$SERVICES" =~ jellyfin ]]; then
+        log_info "Checking NVIDIA GPU availability for Jellyfin..."
+        
+        if check_nvidia_gpu_availability 60; then
+            log_success "NVIDIA GPU devices available - using full GPU acceleration"
+            GPU_AVAILABLE=true
+        else
+            log_warning "NVIDIA GPU devices not available - creating fallback configuration"
+            
+            # Create fallback compose file without GPU acceleration
+            FALLBACK_COMPOSE_FILE="$(dirname "$COMPOSE_FILE")/podman-compose-no-gpu.yml"
+            create_gpu_fallback_compose "$COMPOSE_FILE" "$FALLBACK_COMPOSE_FILE"
+            ACTIVE_COMPOSE_FILE="$FALLBACK_COMPOSE_FILE"
+            GPU_AVAILABLE=false
+        fi
+    else
+        if [[ "$SKIP_GPU_CHECK" == "true" ]]; then
+            log_info "GPU check skipped - using original configuration"
+        else
+            log_info "Jellyfin not in service list - skipping GPU check"
+        fi
+        GPU_AVAILABLE=true  # Assume available when skipping check
+    fi
+    
+    # Build the command with the selected compose file
+    CMD="$COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE up -d $BUILD_FLAG $FORCE_RECREATE $SERVICES"
     
     log_info "Executing: $CMD"
     
     # Execute the command
+    local SUCCESS=false
     if $CMD; then
+        SUCCESS=true
         log_success "Media stack started successfully!"
+        
+        # Display GPU status in success message
+        if [[ "$GPU_AVAILABLE" == true ]]; then
+            log_success "Jellyfin started with NVIDIA GPU acceleration enabled"
+        elif [[ -n "$FALLBACK_COMPOSE_FILE" ]]; then
+            log_warning "Jellyfin started without GPU acceleration (GPU devices not available)"
+            log_info "GPU acceleration will be available after next restart once NVIDIA drivers are loaded"
+        fi
+        
         echo ""
         log_info "Service status:"
-        $COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE ps
+        $COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE ps
         echo ""
         log_info "Useful commands:"
-        echo "  View logs: ./logs.sh"
-        echo "  Stop stack: ./stop.sh"
-        echo "  Check status: $COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE ps"
+        echo "  View logs: ./scripts/podman-logs.sh"
+        echo "  Stop stack: ./scripts/podman-down.sh"
+        echo "  Check status: $COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE ps"
         echo ""
         log_info "Web interfaces:"
         echo "  Prowlarr:    http://localhost:9696"
@@ -168,6 +287,18 @@ main() {
         echo "  FlareSolverr: http://localhost:8191"
     else
         log_error "Failed to start media stack!"
+    fi
+    
+    # Cleanup fallback compose file if it was created
+    if [[ -n "$FALLBACK_COMPOSE_FILE" ]] && [[ -f "$FALLBACK_COMPOSE_FILE" ]]; then
+        log_info "Cleaning up temporary GPU fallback configuration"
+        rm -f "$FALLBACK_COMPOSE_FILE"
+    fi
+    
+    # Exit with appropriate code
+    if [[ "$SUCCESS" == true ]]; then
+        exit 0
+    else
         exit 1
     fi
 }

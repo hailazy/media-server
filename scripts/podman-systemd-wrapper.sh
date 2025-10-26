@@ -34,9 +34,9 @@ fi
 cd /home/haint/media-stack
 
 # Source environment file if it exists
-if [[ -f .env ]]; then
+if [[ -f core/.env ]]; then
     set -a
-    source .env
+    source core/.env
     set +a
 fi
 
