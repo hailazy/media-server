@@ -1,10 +1,12 @@
 # Podman Support for Media Stack
+Start here: [docs/INDEX.md](docs/INDEX.md:1)
+Reading order: 3/8 • Essential
 
 Comprehensive guide for running the Media Stack with Podman - the daemonless container engine that's fully compatible with Docker but offers enhanced security, rootless operation, and better integration with systemd.
 
-> **📚 For general setup and usage:** See [`docs/README.md`](README.md) for complete project documentation and quick start guides.
+> **📚 For general setup and usage:** See [`docs/README.md`](docs/README.md:1) for complete project documentation and quick start guides.
 
-> **⚡ For rapid deployment:** See [`docs/ROOCLINE-QUICK-REF.md`](ROOCLINE-QUICK-REF.md) for essential commands and troubleshooting.
+> **⚡ For rapid deployment:** See [`docs/QUICK-REF.md`](docs/QUICK-REF.md:1) for essential commands and troubleshooting.
 
 ## 📋 Table of Contents
 
@@ -243,14 +245,14 @@ podman run --rm -v volume_name:/data -v $(pwd):/backup alpine tar xzf /backup/vo
 ### Docker Compose Compatibility
 
 The stack provides Podman-optimized configuration:
-- [`core/podman-compose.yml`](../core/podman-compose.yml) - Main Podman configuration with SELinux labels
+- [`core/podman-compose.yml`](core/podman-compose.yml:1) - Main Podman configuration with SELinux labels
 
 ```bash
 # Use Podman-optimized configuration (recommended)
 podman-compose -f core/podman-compose.yml up -d
 
 # Use convenience scripts (easiest)
-./start.sh
+./scripts/podman-up.sh
 
 # Use advanced scripts
 ./scripts/podman-up.sh
@@ -343,12 +345,12 @@ nvidia-smi
 podman run --rm --device nvidia.com/gpu=all ubuntu:22.04 nvidia-smi
 
 # 3. Test with our Jellyfin container
-podman-compose exec jellyfin nvidia-smi
+podman-compose -f core/podman-compose.yml exec jellyfin nvidia-smi
 ```
 
 #### Jellyfin GPU Configuration
 
-The [`core/podman-compose.yml`](../core/podman-compose.yml) includes optimized GPU settings:
+The [`core/podman-compose.yml`](core/podman-compose.yml:1) includes optimized GPU settings:
 
 ```yaml
 jellyfin:
@@ -382,7 +384,7 @@ podman run --rm --device /dev/dri:/dev/dri ubuntu:22.04 ls -la /dev/dri/
 
 ## 🚀 Podman-Specific Quick Start
 
-> **Note**: For complete setup instructions, see [`docs/README.md`](README.md). This section focuses on Podman-specific aspects.
+> **Note**: For complete setup instructions, see [`docs/README.md`](docs/README.md:1). This section focuses on Podman-specific aspects.
 
 ### Using Convenience Scripts (Recommended)
 
@@ -390,16 +392,16 @@ The stack includes convenience scripts optimized for Podman:
 
 ```bash
 # Start the entire stack
-./start.sh
+./scripts/podman-up.sh
 
 # View logs with Podman-specific optimizations
-./logs.sh
+./scripts/podman-logs.sh
 
 # Stop the stack
-./stop.sh
+./scripts/podman-down.sh
 
 # Quick troubleshooting
-./debug.sh
+./maintenance/quick-debug.sh
 ```
 
 ### Using Advanced Podman Scripts
@@ -507,17 +509,17 @@ podman system info  # Podman system information
 # - Performance sysctls disabled (requires root privileges)
 
 # Configuration:
-podman-compose -f podman-compose.yml up -d  # automatically rootless
+podman-compose -f core/podman-compose.yml up -d  # automatically rootless
 ```
 
 **Performance Optimization Limitations in Rootless Mode:**
 
-The [`core/podman-compose.yml`](../core/podman-compose.yml) file has been optimized for rootless compatibility. The following sysctls are commented out for rootless mode but can be enabled when running as root:
+The [`core/podman-compose.yml`](core/podman-compose.yml:1) file has been optimized for rootless compatibility. The following sysctls are commented out for rootless mode but can be enabled when running as root:
 
 ```yaml
 # ROOTLESS COMPATIBILITY NOTE:
 # The following sysctls require root privileges and are commented out for rootless mode.
-# To use these optimizations, run with: sudo podman-compose up -d
+# To use these optimizations, run with: sudo podman-compose -f core/podman-compose.yml up -d
 # sysctls:
 #   - "net.core.rmem_max=134217728"      # Network buffer optimization (requires root)
 #   - "net.core.wmem_max=134217728"      # Network buffer optimization (requires root)
@@ -546,7 +548,7 @@ tmpfs:
 # - Complete kernel-level tuning capabilities
 
 # Usage:
-sudo podman-compose -f podman-compose.yml up -d
+sudo podman-compose -f core/podman-compose.yml up -d
 
 # Security consideration: Containers run as root
 ```
@@ -621,17 +623,12 @@ volumes:
 #### VPN connection fails
 
 ```bash
-# Check TUN device permissions
-ls -la /dev/net/tun
+# Check capabilities and devices
+podman-compose -f core/podman-compose.yml config | grep -A5 -B5 cap_add
 
-# Verify CAP_ADD capabilities
-podman-compose -f podman-compose.yml config | grep -A5 cap_add
-
-# Check for SELinux denials
-sudo ausearch -m avc -ts recent | grep gluetun
-
-# Temporary workaround: disable SELinux for gluetun
-# Add to gluetun service: security_opt: ["label=disable"]
+# Check SELinux context
+ls -Z /dev/net/tun
+# Should show proper labeling
 ```
 
 #### Container networking issues
@@ -642,8 +639,8 @@ podman network ls
 podman network inspect podman
 
 # Test container-to-container connectivity
-podman-compose exec sonarr ping prowlarr
-podman-compose exec radarr curl http://gluetun:8080
+podman-compose -f core/podman-compose.yml exec sonarr ping prowlarr
+podman-compose -f core/podman-compose.yml exec radarr curl http://gluetun:8080
 
 # Reset network if needed
 podman network rm podman
@@ -687,10 +684,10 @@ sudo firewall-cmd --reload
 
 ```bash
 # Check logs for specific service
-./podman-logs.sh jellyfin
+./scripts/podman-logs.sh jellyfin
 
 # Verify compose file syntax
-podman-compose -f podman-compose.yml config
+podman-compose -f core/podman-compose.yml config
 
 # Check resource availability
 df -h  # Disk space
@@ -708,18 +705,18 @@ DEBUG=true
 
 # Or export temporarily
 export DEBUG=true
-./podman-up.sh
+./scripts/podman-up.sh
 
 # View debug logs
-./podman-logs.sh -f gluetun
-./podman-logs.sh -f qbittorrent
+./scripts/podman-logs.sh -f gluetun
+./scripts/podman-logs.sh -f qbittorrent
 ```
 
 ### Logging and Monitoring
 
 ```bash
 # Comprehensive log viewing
-./podman-logs.sh --help
+./scripts/podman-logs.sh --help
 
 # System-wide container monitoring
 podman stats --all
@@ -905,7 +902,7 @@ Podman can generate systemd unit files for automatic startup:
 
 ```bash
 # Generate for entire compose stack
-podman-compose -f podman-compose.yml up -d
+podman-compose -f core/podman-compose.yml up -d
 podman generate systemd --new --files --name media-stack
 
 # Move to systemd directory

@@ -1,4 +1,6 @@
 # NVIDIA GPU Timing Race Condition Fix
+[Start here: docs/INDEX.md:1](docs/INDEX.md:1)
+Reading order: 4/8 • Optional (NVIDIA only)
 
 ## Table of Contents
 - [Problem Description](#problem-description)
@@ -28,16 +30,16 @@ The media-stack systemd service was experiencing startup failures when the syste
 The issue was identified as a **race condition** between the systemd service startup and NVIDIA GPU driver initialization during system boot.
 
 ### Technical Details
-- **Problem**: The [`media-stack.service`](../.config/systemd/user/media-stack.service) starts after `network-online.target` but has no dependency on GPU driver readiness
+- **Problem**: The `~/.config/systemd/user/media-stack.service` starts after `network-online.target` but has no dependency on GPU driver readiness
 - **Race Condition**: Systemd attempts to start containers before NVIDIA CDI (Container Device Interface) device files are created
 - **Missing Dependencies**: Required NVIDIA device files (`/dev/nvidia-uvm`, `/dev/nvidia0`, `/dev/nvidiactl`) were not available when containers started
 - **Container Failure**: Jellyfin container with `nvidia.com/gpu=all` device mapping fails if GPU devices are unavailable
 
 ### Why This Occurs
 1. System boots and systemd starts services in dependency order
-2. [`media-stack.service`](../.config/systemd/user/media-stack.service) meets its dependencies (network-online) and starts
+2. `~/.config/systemd/user/media-stack.service` meets its dependencies (network-online) and starts
 3. NVIDIA driver modules are still loading or CDI setup is incomplete
-4. [`podman-compose`](core/podman-compose.yml) attempts to create Jellyfin container with GPU devices
+4. [`core/podman-compose.yml`](core/podman-compose.yml:1) attempts to create Jellyfin container with GPU devices
 5. Container runtime fails because GPU device files don't exist yet
 6. After 30 seconds, systemd restarts the service and GPU devices are now available
 
@@ -54,7 +56,7 @@ The solution implements **GPU device availability checking** with **graceful fal
 
 ## Technical Implementation
 
-The fix was implemented in [`scripts/podman-up.sh`](../scripts/podman-up.sh) with two new functions and enhanced startup logic.
+The fix was implemented in [`scripts/podman-up.sh`](scripts/podman-up.sh:1) with two new functions and enhanced startup logic.
 
 ### New Functions Added
 
@@ -226,17 +228,17 @@ Added `--skip-gpu-check` option for advanced users:
 
 ### Previous Behavior (Race Condition)
 1. **Boot Process**: System starts, systemd begins service startup
-2. **Service Start**: [`media-stack.service`](../.config/systemd/user/media-stack.service) starts immediately after network-online
+2. **Service Start**: `~/.config/systemd/user/media-stack.service` starts immediately after network-online
 3. **Container Failure**: Jellyfin fails with `/dev/nvidia-uvm: no such file or directory`
-4. **Service Failure**: [`podman-compose`](core/podman-compose.yml) exits with code 125
-5. **Systemd Restart**: Service restarts after 30-second delay (configured in [`RestartSec=30`](../.config/systemd/user/media-stack.service#L19))
+4. **Service Failure**: [`core/podman-compose.yml`](core/podman-compose.yml:1) exits with code 125
+5. **Systemd Restart**: Service restarts after 30-second delay (configured in the systemd unit with `RestartSec=30`)
 6. **Eventual Success**: Second attempt succeeds as GPU drivers are now loaded
 7. **Total Delay**: ~35-40 seconds from boot to full service availability
 
 ### New Behavior (Race Condition Eliminated)
 1. **Boot Process**: System starts, systemd begins service startup
-2. **Service Start**: [`media-stack.service`](../.config/systemd/user/media-stack.service) starts after network-online
-3. **GPU Check**: [`check_nvidia_gpu_availability()`](../scripts/podman-up.sh#L37-L87) waits for NVIDIA devices
+2. **Service Start**: `~/.config/systemd/user/media-stack.service` starts after network-online
+3. **GPU Check**: [`check_nvidia_gpu_availability()`](scripts/podman-up.sh:1) waits for NVIDIA devices
 4. **Device Detection**: Function finds devices available or times out gracefully
 5. **Smart Startup**: Uses appropriate compose configuration based on GPU availability
 6. **First-Time Success**: Service starts successfully on first attempt
@@ -305,7 +307,7 @@ podman exec jellyfin nvidia-smi
 ## Configuration Context
 
 ### Systemd Service Configuration
-The fix integrates with the existing systemd service at [`~/.config/systemd/user/media-stack.service`](../.config/systemd/user/media-stack.service):
+The fix integrates with the existing systemd service at `~/.config/systemd/user/media-stack.service`:
 
 ```ini
 [Unit]
@@ -324,7 +326,7 @@ TimeoutStartSec=300
 ```
 
 ### Podman Compose Configuration
-The fix works with the NVIDIA GPU settings in [`core/podman-compose.yml`](../core/podman-compose.yml):
+The fix works with the NVIDIA GPU settings in [`core/podman-compose.yml`](core/podman-compose.yml:1):
 
 ```yaml
 jellyfin:
@@ -452,6 +454,12 @@ cd /home/haint/media-stack
 source scripts/podman-up.sh
 check_nvidia_gpu_availability 10
 echo "Exit code: $?"
+```
+
+#### GPU Accessibility Test
+```bash
+# GPU accessibility test
+podman-compose -f core/podman-compose.yml exec jellyfin nvidia-smi
 ```
 
 ### Advanced Troubleshooting

@@ -1,4 +1,6 @@
 # qBittorrent Performance Optimization Guide
+Start here: [docs/INDEX.md](docs/INDEX.md:1)
+Reading order: 5/8 • Optional
 
 ## Table of Contents
 - [Optimization Summary](#optimization-summary)
@@ -148,7 +150,7 @@ QBT_SOCKET_BACKLOG_SIZE=30                 # Optimized for high connection count
 
 ## Configuration Files Modified
 
-### 1. [`core/podman-compose.yml`](core/podman-compose.yml) - qBittorrent Service Enhancement
+### 1. [core/podman-compose.yml](core/podman-compose.yml:1) - qBittorrent Service Enhancement
 
 #### Before: Basic qBittorrent Configuration
 ```yaml
@@ -168,7 +170,7 @@ qbittorrent:
 ```
 
 #### After: High-Performance Optimized Configuration
-The optimized configuration spans lines 227-375 in [`core/podman-compose.yml`](core/podman-compose.yml:227):
+The optimized configuration spans lines 227-375 in [core/podman-compose.yml](core/podman-compose.yml:1):
 
 ```yaml
 # qBittorrent - High-Performance Torrent Client (RTX 4070 Ti SUPER + Ryzen 5 7600X3D Optimized)
@@ -480,6 +482,7 @@ gluetun:
     # Performance optimizations
     - DNS_ADDRESS=1.1.1.1                         # Fast DNS resolution
     - DNS_KEEP_NAMESERVER=on                       # Maintain DNS performance
+    - DNS_UPDATE_PERIOD=24h                        # Refresh DNS configuration daily
     - BLOCK_MALICIOUS=off                          # Reduce processing overhead
     - BLOCK_ADS=off                                # Minimize filtering delay
     - UNBLOCK=on                                   # Allow all torrenting protocols
@@ -628,8 +631,8 @@ podman exec qbittorrent curl -s https://ipinfo.io/json
 |-------|-----------|--------------|-------------|-------------------|
 | **Idle** | 0.2-1.0% | 40-100MB | <1MB/s | Web UI responsive |
 | **Light Load (1-5 torrents)** | 2-10% | 200MB-1GB | 5-50MB/s | Fast downloads |
-| **Heavy Load (10-20 torrents)** | 15-25% | 1-4GB | 50-400MB/s | Maximum throughput |
-| **Seeding Only** | 0.5-5% | 100-500MB | 1-20MB/s | Stable uploads |
+| **Medium Load (5-10 torrents)** | 8-20% | 1-3GB | 50-200MB/s | Balanced throughput |
+| **Heavy Load (15-20 torrents)** | 15-30% | 2-6GB | 200-400MB/s | Maximum capacity |
 
 ### Web Interface Access
 
@@ -785,9 +788,15 @@ df -h /media/Storage
 - No significant real-world performance impact observed
 
 **Workaround**: 
-- CPU shares priority (1024) ensures proper resource allocation
-- Monitor with `htop` or `podman stats` to verify performance
-- Consider rootful mode for maximum isolation if needed
+```bash
+# For maximum performance, use rootful mode
+sudo podman-compose -f core/podman-compose.yml up -d
+
+# Or configure system-wide (affects all applications)
+echo 'net.core.rmem_max = 134217728' | sudo tee -a /etc/sysctl.conf
+echo 'net.core.wmem_max = 134217728' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
 
 #### 2. Environment Variable Effectiveness with LinuxServer.io Image
 **Limitation**: Some qBittorrent performance environment variables may not be fully effective with the LinuxServer.io image.
@@ -1173,10 +1182,10 @@ ALERT_THRESHOLD_MEM=75
 
 while true; do
     TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-    STATS=$(podman stats --no-stream qbittorrent --format "{{.CPUPerc}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}}")
+    STATS=$(podman stats --no-stream qbittorrent --format json)
     
-    CPU_PERCENT=$(echo "$STATS" | cut -d',' -f1 | tr -d '%')
-    MEM_PERCENT=$(echo "$STATS" | cut -d',' -f2 | tr -d '%')
+    CPU_PERCENT=$(echo "$STATS" | grep '"CPUPerc":' | awk -F: '{print $2}' | tr -d '"')
+    MEM_PERCENT=$(echo "$STATS" | grep '"MemPerc":' | awk -F: '{print $2}' | tr -d '"')
     
     echo "$TIMESTAMP,$STATS" >> "$MONITOR_LOG"
     
@@ -1349,15 +1358,6 @@ sudo podman-compose -f core/podman-compose.yml up -d
 # Direct container deployment with custom parameters
 ./scripts/podman-up.sh --debug
 ```
-
-### Future Optimization Opportunities
-
-The current implementation provides an excellent foundation for further optimization:
-
-- **Advanced Network Tuning**: Kernel-level optimizations for maximum throughput
-- **AI-Powered Management**: Machine learning for optimal resource allocation
-- **Container Orchestration**: Kubernetes deployment for multi-node scaling
-- **Real-time Analytics**: Advanced performance monitoring and predictive optimization
 
 ### Maintenance and Monitoring
 

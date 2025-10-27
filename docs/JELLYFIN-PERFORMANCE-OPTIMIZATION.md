@@ -1,4 +1,6 @@
 # Jellyfin Performance Optimization Guide
+Start here: [docs/INDEX.md](docs/INDEX.md:1)
+Reading order: 6/8 • Optional
 
 ## Table of Contents
 - [Optimization Summary](#optimization-summary)
@@ -148,7 +150,7 @@ ulimits:
 
 ## Configuration Files Modified
 
-### 1. [`core/podman-compose.yml`](core/podman-compose.yml) Changes
+### 1. [`core/podman-compose.yml`](core/podman-compose.yml:1) Changes
 
 #### Before: Basic Jellyfin Configuration
 ```yaml
@@ -262,7 +264,7 @@ jellyfin:
   restart: unless-stopped
 ```
 
-### 2. [`core/.env.performance`](core/.env.performance) - New Performance Environment File
+### 2. [`core/.env.performance`](core/.env.performance:1) - New Performance Environment File
 
 This new file contains hardware-specific performance optimizations:
 
@@ -304,7 +306,7 @@ JELLYFIN_TRANSCODE_AV1_PRESET=5
 
 ### 3. Rootless Compatibility
 
-The main [`core/podman-compose.yml`](core/podman-compose.yml) file includes **built-in rootless compatibility**. The configuration automatically adapts based on whether you run with rootless or rootful Podman:
+The main [`core/podman-compose.yml`](core/podman-compose.yml:1) file includes **built-in rootless compatibility**. The configuration automatically adapts based on whether you run with rootless or rootful Podman:
 
 **Rootless Mode Features:**
 - Kernel-level sysctls are automatically commented out (lines 328-338, 470-477)

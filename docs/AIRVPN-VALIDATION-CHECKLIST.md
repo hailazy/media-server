@@ -1,16 +1,18 @@
 # AirVPN Configuration Validation & Testing Plan
+Start here: [docs/INDEX.md](docs/INDEX.md:1)
+Reading order: 8/8 • Optional (Validation/Deep dive)
 
 ## ⚠️ CRITICAL ISSUES IDENTIFIED
 
 ### 🚨 **BLOCKER ISSUES - MUST FIX BEFORE STARTING**
 
 #### 1. **Environment Variable Mismatch (CRITICAL)**
-- **Problem**: Current [`core/.env`](../core/.env:1) contains PIA credentials, but [`core/podman-compose.yml`](../core/podman-compose.yml:165) is configured for AirVPN
+- **Problem**: Current [core/.env](core/.env:1) contains PIA credentials, but [core/podman-compose.yml](core/podman-compose.yml:1) is configured for AirVPN
 - **Impact**: VPN will fail to connect, entire stack will be non-functional
 - **Fix Required**: Update `.env` file with AirVPN credentials from `.env.example`
 
 #### 2. **Hard-coded Placeholder Values (CRITICAL)**
-- **Problem**: [`podman-compose.yml`](../core/podman-compose.yml:200-201) contains literal placeholder text:
+- **Problem**: [core/podman-compose.yml](core/podman-compose.yml:1) contains literal placeholder text:
   ```yaml
   - WIREGUARD_PRIVATE_KEY=YOUR_PRIVATE_KEY_HERE
   - WIREGUARD_ADDRESSES=YOUR_VPN_IP_ADDRESS_HERE
@@ -19,7 +21,7 @@
 - **Fix Required**: Replace with environment variable references
 
 #### 3. **Missing Environment Variable Integration (CRITICAL)**
-- **Problem**: [`podman-compose.yml`](../core/podman-compose.yml:165) doesn't use environment variables from `.env` file
+- **Problem**: [core/podman-compose.yml](core/podman-compose.yml:1) doesn't use environment variables from `.env` file
 - **Impact**: Configuration changes require editing YAML instead of just `.env`
 - **Fix Required**: Implement `${VARIABLE}` substitution pattern
 
@@ -30,7 +32,7 @@
 ### Phase 1: Configuration File Validation
 
 #### ✅ **YAML Syntax** *(PASSED)*
-- [x] [`podman-compose.yml`](../core/podman-compose.yml:1) has valid YAML syntax
+- [x] [core/podman-compose.yml](core/podman-compose.yml:1) has valid YAML syntax
 - [x] All service definitions are properly structured
 - [x] No syntax errors detected
 
@@ -48,16 +50,16 @@ Required variables missing or incorrect:
 - [ ] `AIRVPN_PORT_FORWARDING` - Currently missing from `.env`
 
 #### ✅ **Service Dependencies** *(PASSED)*
-- [x] [`qbittorrent`](../core/podman-compose.yml:243) properly depends on [`gluetun`](../core/podman-compose.yml:167) with health condition
-- [x] [`sonarr`](../core/podman-compose.yml:94) and [`radarr`](../core/podman-compose.yml:124) depend on [`prowlarr`](../core/podman-compose.yml:52)
-- [x] [`bazarr`](../core/podman-compose.yml:152) depends on both [`sonarr`](../core/podman-compose.yml:78) and [`radarr`](../core/podman-compose.yml:108)
-- [x] [`jellyfin`](../core/podman-compose.yml:293) depends on [`sonarr`](../core/podman-compose.yml:78) and [`radarr`](../core/podman-compose.yml:108)
+- [x] `qbittorrent` properly depends on `gluetun` with health condition in [core/podman-compose.yml](core/podman-compose.yml:1)
+- [x] `sonarr` and `radarr` depend on `prowlarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
+- [x] `bazarr` depends on both `sonarr` and `radarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
+- [x] `jellyfin` depends on `sonarr` and `radarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
 
 #### ⚠️ **Port & Network Configuration** *(NEEDS REVIEW)*
-- [x] [`gluetun`](../core/podman-compose.yml:213) exposes port `8080:8080`
-- [x] [`qbittorrent`](../core/podman-compose.yml:233) uses `network_mode: "container:gluetun"`
-- [x] [`FIREWALL_INPUT_PORTS=8080`](../core/podman-compose.yml:181) configured
-- [x] [`VPN_PORT_FORWARDING=on`](../core/podman-compose.yml:185) enabled
+- [x] [`gluetun`](core/podman-compose.yml:1) exposes port `8080:8080`
+- [x] [`qbittorrent`](core/podman-compose.yml:1) uses `network_mode: "container:gluetun"`
+- [x] [`FIREWALL_INPUT_PORTS=8080`](core/podman-compose.yml:1) configured
+- [x] [`VPN_PORT_FORWARDING=on`](core/podman-compose.yml:1) enabled
 - [ ] **REVIEW NEEDED**: Static port 8080 may conflict with AirVPN's dynamic port forwarding
 
 ---
@@ -100,7 +102,7 @@ MEDIA_ROOT=/media/Storage
 
 ### Fix 2: Update podman-compose.yml for Environment Variable Integration
 
-**Replace hard-coded values in [`gluetun`](../core/podman-compose.yml:165) service:**
+**Replace hard-coded values in [gluetun](core/podman-compose.yml:1) service:**
 
 ```yaml
 environment:
@@ -127,15 +129,14 @@ environment:
 #### Step 1.1: Validate Configuration Files
 ```bash
 # Verify YAML syntax
-cd core
-python3 -c "import yaml; yaml.safe_load(open('podman-compose.yml')); print('✅ YAML valid')"
+python3 -c "import yaml; yaml.safe_load(open('core/podman-compose.yml')); print('✅ YAML valid')"
 
 # Check for placeholder values
-grep -n "YOUR_.*_HERE" podman-compose.yml
+grep -n "YOUR_.*_HERE" core/podman-compose.yml
 # Should return no results after fixes
 
 # Verify environment variables exist
-grep -E "^AIRVPN_" .env
+grep -E "^AIRVPN_" core/.env
 # Should show all required AirVPN variables
 ```
 
@@ -156,21 +157,21 @@ echo $AIRVPN_WIREGUARD_ADDRESSES | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9
 ls -la /media/Storage/
 # Should show proper ownership (PUID:PGID)
 
-# Check config directory
-ls -la ../configs/
+# Check config directory (from repository root)
+mkdir -p configs && ls -la configs/
 # Should be writable by containers
 ```
+> Note: All commands assume execution from the repository root.
 
 ### Phase 2: VPN Connection Testing
 
 #### Step 2.1: Start VPN Container Only
 ```bash
-# Start only gluetun for initial testing
-cd core
-podman-compose up -d gluetun
+# Start only gluetun for initial testing (from repo root)
+podman-compose -f core/podman-compose.yml up -d gluetun
 
 # Monitor startup logs
-podman-compose logs -f gluetun
+podman-compose -f core/podman-compose.yml logs -f gluetun
 ```
 
 **Expected Success Indicators:**
@@ -188,22 +189,22 @@ podman-compose logs -f gluetun
 #### Step 2.2: Test VPN Connectivity
 ```bash
 # Test from within gluetun container
-podman exec gluetun curl -s ipinfo.io
+podman-compose -f core/podman-compose.yml exec gluetun curl -s ipinfo.io
 # Should show AirVPN server IP, not your real IP
 
 # Test port forwarding status
-podman exec gluetun curl -s localhost:9999/portforwarded
+podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded
 # Should return the forwarded port number
 ```
 
 #### Step 2.3: Test DNS Resolution
 ```bash
 # Test DNS resolution through VPN
-podman exec gluetun nslookup google.com
+podman-compose -f core/podman-compose.yml exec gluetun nslookup google.com
 # Should resolve successfully
 
 # Test blocked sites (if geo-blocking test is relevant)
-podman exec gluetun curl -I https://www.netflix.com
+podman-compose -f core/podman-compose.yml exec gluetun curl -I https://www.netflix.com
 # Should connect (response may vary by region)
 ```
 
@@ -212,10 +213,10 @@ podman exec gluetun curl -I https://www.netflix.com
 #### Step 3.1: Start qBittorrent
 ```bash
 # Start qBittorrent (depends on gluetun)
-podman-compose up -d qbittorrent
+podman-compose -f core/podman-compose.yml up -d qbittorrent
 
 # Check dependency satisfaction
-podman-compose logs qbittorrent
+podman-compose -f core/podman-compose.yml logs qbittorrent
 ```
 
 #### Step 3.2: Test Network Isolation
@@ -230,7 +231,7 @@ podman exec qbittorrent curl -s --connect-timeout 5 ipinfo.io
 # Should fail/timeout (proving network isolation)
 
 # Restart gluetun
-podman-compose up -d gluetun
+podman-compose -f core/podman-compose.yml up -d gluetun
 ```
 
 #### Step 3.3: Test qBittorrent Web Interface
@@ -253,11 +254,11 @@ curl -c cookies.txt -d "username=${QBIT_USER}&password=${QBIT_PASS}" \
 #### Step 4.1: Verify Dynamic Port Assignment
 ```bash
 # Get the assigned port from gluetun
-FORWARDED_PORT=$(podman exec gluetun cat /tmp/gluetun/forwarded_port)
+FORWARDED_PORT=$(podman-compose -f core/podman-compose.yml exec gluetun cat /tmp/gluetun/forwarded_port)
 echo "Forwarded port: $FORWARDED_PORT"
 
 # Verify port is open
-podman exec gluetun nc -zv localhost $FORWARDED_PORT
+podman-compose -f core/podman-compose.yml exec gluetun nc -zv localhost $FORWARDED_PORT
 # Should connect successfully
 ```
 
@@ -278,10 +279,10 @@ curl -b cookies.txt http://localhost:8080/api/v2/app/preferences | \
 #### Step 5.1: Start All Services
 ```bash
 # Start complete stack
-podman-compose up -d
+podman-compose -f core/podman-compose.yml up -d
 
 # Verify all services are healthy
-podman-compose ps
+podman-compose -f core/podman-compose.yml ps
 # All services should show "Up" status
 ```
 
@@ -338,7 +339,7 @@ curl -I https://airvpn.org/status/
 **Diagnosis:**
 ```bash
 # Check if port forwarding is enabled in AirVPN account
-podman exec gluetun curl -s localhost:9999/portforwarded
+podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded
 # Should return a port number, not error
 ```
 **Solutions:**
@@ -380,7 +381,29 @@ podman port qbittorrent
 # Note: No direct ports due to network_mode=container:gluetun
 
 # Test through gluetun
-podman exec gluetun curl -I localhost:8080
+podman-compose -f core/podman-compose.yml exec gluetun curl -I localhost:8080
+```
+
+### Documentation References
+
+- **Main Documentation:** [docs/README.md](docs/README.md:1)
+- **Podman Guide:** [docs/PODMAN.md](docs/PODMAN.md:1)  
+- **Quick Reference:** [docs/QUICK-REF.md](docs/QUICK-REF.md:1)
+- **GPU Optimization:** [docs/GPU-TIMING-FIX.md](docs/GPU-TIMING-FIX.md:1)
+- **qBittorrent Performance:** [docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md:1)
+
+#### 3. VPN Connection Issues
+
+**Diagnosis:**
+```bash
+# Check Gluetun logs
+podman-compose -f core/podman-compose.yml logs gluetun
+
+# Test VPN connectivity
+podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
+
+# Verify VPN credentials
+grep -E "(AIRVPN_|WIREGUARD_)" core/.env
 ```
 
 ---
@@ -404,11 +427,11 @@ fi
 
 # 2. Check containers
 echo "2. Checking container status..."
-podman-compose ps
+podman-compose -f core/podman-compose.yml ps
 
 # 3. Check VPN connection
 echo "3. Checking VPN connection..."
-VPN_IP=$(podman exec gluetun curl -s ipinfo.io/ip 2>/dev/null)
+VPN_IP=$(podman-compose -f core/podman-compose.yml exec gluetun curl -s ipinfo.io/ip 2>/dev/null)
 if [ $? -eq 0 ]; then
     echo "✅ VPN connected: $VPN_IP"
 else
@@ -417,7 +440,7 @@ fi
 
 # 4. Check port forwarding
 echo "4. Checking port forwarding..."
-FORWARDED_PORT=$(podman exec gluetun curl -s localhost:9999/portforwarded 2>/dev/null)
+FORWARDED_PORT=$(podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded 2>/dev/null)
 if [ $? -eq 0 ] && [ "$FORWARDED_PORT" != "0" ]; then
     echo "✅ Port forwarding active: $FORWARDED_PORT"
 else
@@ -441,8 +464,8 @@ echo "=== Validation Complete ==="
 # If AirVPN migration fails, rollback to PIA
 cp core/.env.pia-backup core/.env
 git checkout core/podman-compose.yml  # If you had PIA version in git
-podman-compose down
-podman-compose up -d
+podman-compose -f core/podman-compose.yml down
+podman-compose -f core/podman-compose.yml up -d
 ```
 
 ---

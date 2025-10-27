@@ -1,4 +1,6 @@
-# Media Stack Quick Reference - Roocline Optimization
+# Media Stack Quick Reference
+Start here: [docs/INDEX.md](docs/INDEX.md:1)
+Reading order: 1/8 • Essential
 
 **🎯 RAPID CONTEXT**: Podman-based media automation stack with VPN protection, automated downloads, and media streaming. All traffic routed through AirVPN with static WireGuard configuration.
 
@@ -15,20 +17,20 @@
 ## 🎯 Critical File Priority (READ FIRST)
 
 ### **🔥 ESSENTIAL** (Start here for any issue)
-1. **[`core/podman-compose.yml`](../core/podman-compose.yml:1)** - Main service definitions, dependencies, networking
-2. **[`core/.env`](../core/.env)** / **[`core/.env.example`](../core/.env.example:1)** - All configuration variables (AirVPN creds, ports, paths)
-3. **[`maintenance/maintenance.sh`](../maintenance/maintenance.sh:1)** - Comprehensive debugging tool (`./maintenance/maintenance.sh health`)
+1. **[core/podman-compose.yml](core/podman-compose.yml:1)** - Main service definitions, dependencies, networking
+2. **[core/.env](core/.env:1)** / **[core/.env.example](core/.env.example:1)** - All configuration variables (AirVPN creds, ports, paths)
+3. **[maintenance/maintenance.sh](maintenance/maintenance.sh:1)** - Comprehensive debugging tool (`./maintenance/maintenance.sh health`)
 
 ### **🔧 OPERATIONAL** (Daily use)
-4. **[`scripts/podman-up.sh`](../scripts/podman-up.sh)** - Stack startup script
-5. **[`maintenance/quick-debug.sh`](../maintenance/quick-debug.sh)** - Fast troubleshooting
-6. **[`scripts/podman-logs.sh`](../scripts/podman-logs.sh)** - Log viewing utility
+4. **[scripts/podman-up.sh](scripts/podman-up.sh:1)** - Stack startup script
+5. **[maintenance/quick-debug.sh](maintenance/quick-debug.sh:1)** - Fast troubleshooting
+6. **[scripts/podman-logs.sh](scripts/podman-logs.sh:1)** - Log viewing utility
 
 ### **📚 CONTEXTUAL** (Reference when needed)
-7. **[`docs/README.md`](../docs/README.md:1)** - Complete documentation (996 lines)
-8. **[`docs/PODMAN.md`](../docs/PODMAN.md:1)** - Podman-specific setup guide
-9. **[`docs/AIRVPN-VALIDATION-CHECKLIST.md`](../docs/AIRVPN-VALIDATION-CHECKLIST.md:1)** - AirVPN validation guide
-10. **[`services/gluetun/servers.json`](../services/gluetun/servers.json:1)** - AirVPN server configurations
+7. **[docs/README.md](docs/README.md:1)** - Complete documentation (996 lines)
+8. **[docs/PODMAN.md](docs/PODMAN.md:1)** - Podman-specific setup guide
+9. **[docs/AIRVPN-VALIDATION-CHECKLIST.md](docs/AIRVPN-VALIDATION-CHECKLIST.md:1)** - AirVPN validation guide
+10. **[services/gluetun/servers.json](services/gluetun/servers.json:1)** - AirVPN server configurations
 
 ---
 
@@ -147,7 +149,7 @@ podman-compose -f core/podman-compose.yml restart gluetun
 # Check AirVPN port forwarding status
 podman-compose -f core/podman-compose.yml logs gluetun | grep -i "port"
 
-# Verify AirVPN_PORT_FORWARDING=true in core/.env
+# Verify AIRVPN_PORT_FORWARDING=true in core/.env
 grep AIRVPN_PORT_FORWARDING core/.env
 
 # Check AirVPN account port forwarding settings
@@ -189,7 +191,7 @@ podman port --all
 
 ## ⚙️ Configuration Essentials
 
-### **Must-Configure Variables** ([`core/.env.example:1`](../core/.env.example:1))
+### **Must-Configure Variables** ([core/.env.example](core/.env.example:1))
 ```bash
 # Copy and edit
 cp core/.env.example .env
@@ -296,4 +298,4 @@ curl -I http://localhost:8096  # Jellyfin
 
 ---
 
-**🚀 TIP FOR ROOCLINE**: Start with `./maintenance/maintenance.sh health` for any issue. It covers 90% of common problems and provides specific guidance for failures. Enable `DEBUG=true` in [`core/.env`](../core/.env) when troubleshooting complex issues.
+**🚀 TIP**: Start with `./maintenance/maintenance.sh health` for any issue. It covers 90% of common problems and provides specific guidance for failures. Enable `DEBUG=true` in [core/.env](core/.env:1) when troubleshooting complex issues.
