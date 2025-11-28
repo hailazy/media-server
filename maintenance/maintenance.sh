@@ -23,7 +23,7 @@ fi
 LOG_DIR="${PROJECT_ROOT}/logs"
 TEMP_DIR="${PROJECT_ROOT}/tmp"
 COMPOSE_FILE="${PROJECT_ROOT}/core/podman-compose.yml"
-ENV_FILE="${PROJECT_ROOT}/.env"
+ENV_FILE="${PROJECT_ROOT}/core/.env"
 DEBUG_LOG_FILE="${LOG_DIR}/maintenance-debug.log"
 
 # Color codes for output
@@ -77,12 +77,12 @@ check_environment_file() {
     log_debug "Checking environment configuration..."
     if [[ ! -f "$ENV_FILE" ]]; then
         log_error "Environment file not found: $ENV_FILE"
-        log_info "Create it from .env.example: cp core/.env.example .env"
+        log_info "Create it from core/.env.example: cp core/.env.example core/.env"
         return 1
     fi
     
     # Check for required variables
-    local required_vars=("PIA_USER" "PIA_PASS" "QBIT_USER" "QBIT_PASS")
+    local required_vars=("AIRVPN_WIREGUARD_PRIVATE_KEY" "AIRVPN_WIREGUARD_ADDRESSES" "QBIT_USER" "QBIT_PASS")
     local missing_vars=()
     
     for var in "${required_vars[@]}"; do
@@ -261,7 +261,7 @@ collect_network_info() {
     {
         echo "Network connectivity tests:"
         echo "Google DNS: $(ping -c 1 8.8.8.8 &>/dev/null && echo 'OK' || echo 'FAILED')"
-        echo "PIA servers: $(ping -c 1 serverlist.piaservers.net &>/dev/null && echo 'OK' || echo 'FAILED')"
+        echo "AirVPN servers: $(ping -c 1 airvpn.org &>/dev/null && echo 'OK' || echo 'FAILED')"
         echo ""
         echo "Podman networks:"
         podman network ls
@@ -273,7 +273,7 @@ collect_network_info() {
 
 collect_service_logs() {
     log_section "Service Logs Collection"
-    local services=("gluetun" "pia-wggen" "pia-pf" "qbittorrent" "prowlarr" "sonarr" "radarr" "bazarr" "jellyfin")
+    local services=("gluetun" "qbittorrent" "prowlarr" "sonarr" "radarr" "bazarr" "jellyfin")
     
     for service in "${services[@]}"; do
         log_debug "Collecting logs for $service..."
@@ -289,7 +289,7 @@ run_connectivity_tests() {
     {
         echo "Testing external connectivity:"
         echo "- Google: $(curl -s --max-time 5 https://www.google.com &>/dev/null && echo 'OK' || echo 'FAILED')"
-        echo "- PIA API: $(curl -s --max-time 5 https://www.privateinternetaccess.com/api/client/v2/token &>/dev/null && echo 'OK' || echo 'FAILED')"
+        echo "- AirVPN API: $(curl -s --max-time 5 https://airvpn.org &>/dev/null && echo 'OK' || echo 'FAILED')"
         echo "- Port checker: $(curl -s --max-time 5 https://portchecker.co &>/dev/null && echo 'OK' || echo 'FAILED')"
         echo ""
         echo "Testing internal service connectivity:"
@@ -359,8 +359,8 @@ enable_debug_mode() {
     
     # Show what will change
     log_debug "Services that will show enhanced logging:"
-    echo "  - pia_pf_runner.sh (PIA port forwarding)"
-    echo "  - update-qb.sh (qBittorrent port updates)"
+    echo "  - Gluetun (VPN connection)"
+    echo "  - qBittorrent (download operations)"
     echo "  - Container startup processes"
 }
 
@@ -399,19 +399,15 @@ troubleshoot_vpn_issues() {
         echo "- Volume mounted config: $(podman-compose exec -T gluetun ls -la /gluetun/wireguard/ 2>/dev/null | grep wg0.conf || echo 'NOT FOUND')"
         echo ""
         
-        echo "PIA-WGGen Status:"
-        podman-compose logs --tail=20 pia-wggen 2>/dev/null || echo "pia-wggen logs not available"
-        echo ""
-        
         echo "Gluetun VPN Status:"
         podman-compose logs --tail=20 gluetun | grep -E "(VPN|connection|error)" || echo "No VPN status messages found"
         echo ""
         
         echo "Suggested Actions:"
-        echo "1. Regenerate WireGuard config: podman-compose run --rm pia-wggen"
-        echo "2. Restart VPN services: podman-compose restart gluetun pia-pf"
-        echo "3. Check PIA credentials in .env file"
-        echo "4. Verify PIA subscription is active"
+        echo "1. Check AirVPN credentials in .env file"
+        echo "2. Restart VPN service: podman-compose restart gluetun"
+        echo "3. Verify AirVPN subscription is active"
+        echo "4. Check AirVPN server status: https://airvpn.org/status/"
     } | tee "${LOG_DIR}/vpn-troubleshooting.log"
 }
 
@@ -420,12 +416,12 @@ troubleshoot_port_forwarding() {
     
     {
         echo "Port Forwarding Status:"
-        echo "- PIA subscription supports PF: Check your PIA account"
-        echo "- Port forwarding enabled: $(grep PIA_PF .env 2>/dev/null || echo 'NOT SET')"
+        echo "- AirVPN subscription supports PF: Check your AirVPN account"
+        echo "- Port forwarding enabled: $(grep AIRVPN_PORT_FORWARDING \"$ENV_FILE\" 2>/dev/null || echo 'NOT SET')"
         echo ""
         
-        echo "PIA Port Forwarding Logs:"
-        podman-compose logs --tail=30 pia-pf 2>/dev/null | grep -E "(port|forward|error)" || echo "No port forwarding logs found"
+        echo "AirVPN Port Forwarding Logs:"
+        podman-compose logs --tail=30 gluetun 2>/dev/null | grep -E "(port|forward|error)" || echo "No port forwarding logs found"
         echo ""
         
         echo "Current forwarded port:"
@@ -433,10 +429,10 @@ troubleshoot_port_forwarding() {
         echo ""
         
         echo "Suggested Actions:"
-        echo "1. Verify PIA_PF=true in .env file"
-        echo "2. Check PIA subscription includes port forwarding"
-        echo "3. Restart port forwarding: podman-compose restart pia-pf"
-        echo "4. Try different PIA server region"
+        echo "1. Verify AIRVPN_PORT_FORWARDING=true in .env file"
+        echo "2. Check AirVPN subscription includes port forwarding"
+        echo "3. Restart VPN service: podman-compose restart gluetun"
+        echo "4. Try different AirVPN server region"
     } | tee "${LOG_DIR}/port-forwarding-troubleshooting.log"
 }
 

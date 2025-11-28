@@ -6,8 +6,8 @@ Reading order: 8/8 • Optional (Validation/Deep dive)
 
 ### 🚨 **BLOCKER ISSUES - MUST FIX BEFORE STARTING**
 
-#### 1. **Environment Variable Mismatch (CRITICAL)**
-- **Problem**: Current [core/.env](core/.env:1) contains PIA credentials, but [core/podman-compose.yml](core/podman-compose.yml:1) is configured for AirVPN
+#### 1. **Environment Variable Configuration (CRITICAL)**
+- **Problem**: Current [core/.env](core/.env:1) may not have AirVPN credentials properly configured
 - **Impact**: VPN will fail to connect, entire stack will be non-functional
 - **Fix Required**: Update `.env` file with AirVPN credentials from `.env.example`
 
@@ -37,10 +37,10 @@ Reading order: 8/8 • Optional (Validation/Deep dive)
 - [x] No syntax errors detected
 
 #### ❌ **Environment Variable Consistency** *(FAILED)*
-- [ ] **CRITICAL**: `.env` file uses AirVPN variables instead of PIA
+- [ ] **CRITICAL**: `.env` file must use AirVPN variables
 - [ ] **CRITICAL**: `podman-compose.yml` uses environment variable references instead of hard-coded values
 - [ ] All required AirVPN variables are defined in `.env`
-- [ ] No orphaned PIA variables remain in configuration
+- [ ] No orphaned VPN variables remain in configuration
 
 #### ❌ **AirVPN Configuration Completeness** *(FAILED)*
 Required variables missing or incorrect:
@@ -72,7 +72,7 @@ Required variables missing or incorrect:
 
 ```bash
 # Backup current configuration
-cp core/.env core/.env.pia-backup
+cp core/.env core/.env.backup
 
 # Copy AirVPN template
 cp core/.env.example core/.env
@@ -461,9 +461,8 @@ echo "=== Validation Complete ==="
 
 ### Emergency Rollback
 ```bash
-# If AirVPN migration fails, rollback to PIA
-cp core/.env.pia-backup core/.env
-git checkout core/podman-compose.yml  # If you had PIA version in git
+# If configuration fails, restore from backup
+cp core/.env.backup core/.env
 podman-compose -f core/podman-compose.yml down
 podman-compose -f core/podman-compose.yml up -d
 ```
@@ -496,4 +495,4 @@ The migration is successful when:
 5. ✅ All web interfaces are accessible
 6. ✅ No network leaks when VPN restarts
 
-**Estimated Migration Time**: 30-60 minutes (depending on troubleshooting needs)
+**Estimated Setup Time**: 30-60 minutes (depending on troubleshooting needs)

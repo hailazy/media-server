@@ -49,14 +49,12 @@ check_podman_compose() {
 # Show available services
 show_services() {
     log_info "Available services:"
-    echo -e "  ${CYAN}pia-wggen${NC}    - PIA WireGuard configuration generator"
     echo -e "  ${CYAN}flaresolverr${NC} - CloudFlare challenge solver"
     echo -e "  ${CYAN}prowlarr${NC}     - Indexer management"
     echo -e "  ${CYAN}sonarr${NC}       - TV series management"
     echo -e "  ${CYAN}radarr${NC}       - Movie management"
     echo -e "  ${CYAN}bazarr${NC}       - Subtitle management"
     echo -e "  ${CYAN}gluetun${NC}      - VPN container"
-    echo -e "  ${CYAN}pia-pf${NC}       - PIA port forwarding"
     echo -e "  ${CYAN}qbittorrent${NC}  - Torrent client"
     echo -e "  ${CYAN}jellyfin${NC}     - Media server"
 }
@@ -144,7 +142,7 @@ main() {
                 echo ""
                 echo "Examples:"
                 echo "  $0                           # Show recent logs for all services"
-                echo "  $0 -f gluetun pia-pf        # Follow logs for VPN services"
+                echo "  $0 -f gluetun                # Follow logs for VPN service"
                 echo "  $0 --tail 50 jellyfin       # Show last 50 lines for Jellyfin"
                 echo "  $0 -t --since 1h            # Show logs with timestamps from last hour"
                 echo "  $0 --follow --tail all      # Follow all logs from beginning"

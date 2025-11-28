@@ -49,10 +49,10 @@ check_basic() {
     # Environment file
     if [[ -f "$ENV_FILE" ]]; then
         echo_info "Environment file exists"
-        if grep -q "PIA_USER=" "$ENV_FILE" && grep -q "PIA_PASS=" "$ENV_FILE"; then
-            echo_info "PIA credentials configured"
+        if grep -q "AIRVPN_WIREGUARD_PRIVATE_KEY=" "$ENV_FILE" && grep -q "AIRVPN_WIREGUARD_ADDRESSES=" "$ENV_FILE"; then
+            echo_info "AirVPN credentials configured"
         else
-            echo_warn "PIA credentials missing in $ENV_FILE"
+            echo_warn "AirVPN credentials missing in $ENV_FILE"
         fi
     else
         echo_error "Environment file missing - copy from ${PROJECT_ROOT}/core/.env.example"
@@ -119,7 +119,7 @@ check_vpn() {
         if podman-compose -f "$COMPOSE_FILE" exec -T gluetun ls /gluetun/wireguard/wg0.conf &> /dev/null; then
             echo_info "WireGuard config found"
         else
-            echo_warn "WireGuard config missing - regenerate with: podman-compose -f $COMPOSE_FILE run --rm pia-wggen"
+            echo_warn "WireGuard config missing - check AirVPN credentials in .env file"
         fi
     else
         echo_error "Gluetun VPN service not running"
@@ -130,9 +130,9 @@ check_vpn() {
 check_port_forwarding() {
     echo -e "\n${BLUE}=== Port Forwarding Check ===${NC}"
     
-    # Check if pia-pf is running
-    if podman-compose -f "$COMPOSE_FILE" ps pia-pf | grep -q "Up"; then
-        echo_info "PIA port forwarding service is running"
+    # Check if gluetun is running (port forwarding is built into gluetun)
+    if podman-compose -f "$COMPOSE_FILE" ps gluetun | grep -q "Up"; then
+        echo_info "AirVPN port forwarding is available"
         
         # Check for forwarded port
         local port_file="/tmp/gluetun/forwarded_port"
@@ -150,21 +150,19 @@ check_port_forwarding() {
             fi
         else
             echo_warn "No valid forwarded port found"
-            echo_debug "Check logs with: podman-compose -f $COMPOSE_FILE logs pia-pf"
+            echo_debug "Check logs with: podman-compose -f $COMPOSE_FILE logs gluetun"
         fi
     else
-        echo_error "PIA port forwarding service not running"
+        echo_error "AirVPN service not running"
     fi
 }
 
 show_quick_commands() {
     echo -e "\n${BLUE}=== Quick Commands ===${NC}"
     echo "Start services:          ${PROJECT_ROOT}/start.sh"
-    echo "Restart VPN:             podman-compose -f $COMPOSE_FILE restart gluetun pia-pf"
-    echo "Regenerate VPN config:   podman-compose -f $COMPOSE_FILE run --rm pia-wggen"
+    echo "Restart VPN:             podman-compose -f $COMPOSE_FILE restart gluetun"
     echo "View all logs:           podman-compose -f $COMPOSE_FILE logs -f"
     echo "View VPN logs:           podman-compose -f $COMPOSE_FILE logs -f gluetun"
-    echo "View port forward logs:  podman-compose -f $COMPOSE_FILE logs -f pia-pf"
     echo "Health check:            ./maintenance.sh health"
     echo "Full diagnostic:         ./maintenance.sh diagnostic"
     echo "Enable debug mode:       ./maintenance.sh debug-enable"

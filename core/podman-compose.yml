@@ -426,17 +426,13 @@ services:
       - ../configs/jellyfin-cache:/cache:Z
       - /media/Storage/tv-shows:/tv:z
       - /media/Storage/movies:/movies:z
-      
+       
     ports: ["8096:8096"]
     
     # Enhanced GPU Support for RTX 4070 Ti SUPER
     devices:
       - "nvidia.com/gpu=all"      # CDI - RTX 4070 Ti SUPER access
       - "/dev/dri:/dev/dri"       # VAAPI fallback
-      - "/dev/nvidia0:/dev/nvidia0"          # Direct GPU device access
-      - "/dev/nvidiactl:/dev/nvidiactl"      # NVIDIA control device
-      - "/dev/nvidia-uvm:/dev/nvidia-uvm"   # Unified Memory access
-      - "/dev/nvidia-caps:/dev/nvidia-caps" # NVIDIA capabilities
       
     # Optimized tmpfs for 32GB RAM system (increased from 16GB to 20GB)
     # Note: uid/gid options removed for rootless Podman compatibility

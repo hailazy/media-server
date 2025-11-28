@@ -80,29 +80,110 @@ check_nvidia_gpu_availability() {
         attempts=$((attempts + 1))
     done
     
-    # Timeout reached
-    log_warning "GPU availability check timeout after ${timeout}s"
-    log_warning "NVIDIA devices not available - proceeding without GPU acceleration"
-    return 1
+    # Timeout reached - fail since GPU is required
+    log_error "GPU availability check timeout after ${timeout}s"
+    log_error "NVIDIA devices not available - GPU acceleration is required"
+    exit 1
 }
 
-# Create temporary compose file without GPU acceleration
-create_gpu_fallback_compose() {
-    local original_compose="$1"
-    local fallback_compose="$2"
+# Get current NVIDIA driver version
+get_nvidia_driver_version() {
+    local driver_version=""
     
-    log_info "Creating GPU fallback configuration..."
+    # Try nvidia-smi first (most reliable)
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]')
+    fi
     
-    # Copy original compose file and remove GPU-specific configurations
-    cp "$original_compose" "$fallback_compose"
+    # Fallback to /proc/driver/nvidia/version if nvidia-smi fails
+    if [[ -z "$driver_version" ]] && [[ -f "/proc/driver/nvidia/version" ]]; then
+        driver_version=$(grep "NVRM version" /proc/driver/nvidia/version 2>/dev/null | awk '{print $NF}' | tr -d '[:space:]')
+    fi
     
-    # Remove nvidia.com/gpu device mapping and NVIDIA environment variables
-    sed -i '/nvidia\.com\/gpu=all/d' "$fallback_compose"
-    sed -i '/NVIDIA_VISIBLE_DEVICES/d' "$fallback_compose"
-    sed -i '/NVIDIA_DRIVER_CAPABILITIES/d' "$fallback_compose"
+    echo "$driver_version"
+}
+
+# Check and maintain NVIDIA CDI configuration for rootless Podman
+check_nvidia_cdi_configuration() {
+    local driver_version
+    local cdi_config_dir="${HOME}/.config/containers/cdi"
+    local cdi_config_file="${cdi_config_dir}/nvidia.yaml"
+    local state_file="${cdi_config_dir}/nvidia-driver-version.txt"
+    local stored_version=""
     
-    log_info "GPU fallback compose file created: $fallback_compose"
-    log_warning "Jellyfin will start without GPU acceleration"
+    log_info "Checking NVIDIA CDI configuration for rootless Podman..."
+    
+    # Get current driver version
+    driver_version=$(get_nvidia_driver_version)
+    if [[ -z "$driver_version" ]]; then
+        log_warning "Unable to determine NVIDIA driver version"
+        log_warning "Skipping CDI configuration check"
+        return 0
+    fi
+    
+    log_info "Current NVIDIA driver version: $driver_version"
+    
+    # Read stored version from state file if it exists
+    if [[ -f "$state_file" ]]; then
+        stored_version=$(cat "$state_file" 2>/dev/null || echo "")
+        log_info "Previously stored driver version: $stored_version"
+    else
+        log_info "No state file found - will create CDI configuration"
+    fi
+    
+    # Check if we need to regenerate CDI configuration
+    if [[ "$stored_version" != "$driver_version" ]]; then
+        log_info "Driver version change detected (old: ${stored_version:-none}, new: $driver_version)"
+        log_info "Regenerating rootless CDI configuration..."
+        
+        # Ensure CDI directory exists
+        mkdir -p "$cdi_config_dir"
+        
+        # Check if nvidia-ctk is available
+        if ! command -v nvidia-ctk >/dev/null 2>&1; then
+            log_error "nvidia-ctk command not found - cannot generate CDI configuration"
+            log_error "Please install nvidia-container-toolkit"
+            return 1
+        fi
+        
+        # Generate CDI configuration without sudo (rootless)
+        if nvidia-ctk cdi generate --output="$cdi_config_file"; then
+            log_success "Rootless CDI configuration generated successfully"
+            
+            # Update state file with new version
+            echo "$driver_version" > "$state_file"
+            log_success "Driver version state updated: $driver_version"
+            
+            # Verify the configuration was created
+            if [[ -f "$cdi_config_file" ]]; then
+                log_success "CDI configuration file created: $cdi_config_file"
+                return 0
+            else
+                log_error "CDI configuration file was not created"
+                return 1
+            fi
+        else
+            log_error "Failed to generate CDI configuration with nvidia-ctk"
+            log_error "Command: nvidia-ctk cdi generate --output=\"$cdi_config_file\""
+            return 1
+        fi
+    else
+        log_success "Driver version unchanged - CDI configuration is up to date"
+        
+        # Verify CDI config exists even if versions match
+        if [[ ! -f "$cdi_config_file" ]]; then
+            log_warning "CDI configuration file missing but versions match - regenerating..."
+            mkdir -p "$cdi_config_dir"
+            if nvidia-ctk cdi generate --output="$cdi_config_file"; then
+                log_success "CDI configuration regenerated successfully"
+            else
+                log_error "Failed to regenerate missing CDI configuration"
+                return 1
+            fi
+        fi
+    fi
+    
+    return 0
 }
 
 # Check if podman-compose is available
@@ -177,7 +258,6 @@ main() {
     SERVICES=""
     BUILD_FLAG=""
     FORCE_RECREATE=""
-    SKIP_GPU_CHECK=""
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -189,23 +269,19 @@ main() {
                 FORCE_RECREATE="--force-recreate"
                 shift
                 ;;
-            --skip-gpu-check)
-                SKIP_GPU_CHECK="true"
-                shift
-                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS] [SERVICES...]"
                 echo ""
                 echo "Options:"
                 echo "  --build           Build images before starting"
                 echo "  --force-recreate  Recreate containers even if config unchanged"
-                echo "  --skip-gpu-check  Skip NVIDIA GPU availability check"
                 echo "  --help, -h        Show this help message"
                 echo ""
                 echo "Services:"
                 echo "  If no services specified, all services will be started"
-                echo "  Available services: pia-wggen, flaresolverr, prowlarr, sonarr,"
-                echo "                     radarr, bazarr, gluetun, pia-pf, qbittorrent, jellyfin"
+                echo "  Available services: flaresolverr, prowlarr, sonarr,"
+                echo "                     radarr, bazarr, gluetun, qbittorrent, jellyfin"
+                echo ""
                 exit 0
                 ;;
             -*)
@@ -219,38 +295,18 @@ main() {
         esac
     done
     
-    # GPU availability check and compose file selection
-    local ACTIVE_COMPOSE_FILE="$COMPOSE_FILE"
-    local FALLBACK_COMPOSE_FILE=""
-    local GPU_AVAILABLE=false
-    
-    # Check if we should skip GPU check or if Jellyfin is specifically requested
-    if [[ "$SKIP_GPU_CHECK" != "true" ]] && [[ -z "$SERVICES" || "$SERVICES" =~ jellyfin ]]; then
+    # GPU availability check - required for Jellyfin
+    if [[ -z "$SERVICES" || "$SERVICES" =~ jellyfin ]]; then
         log_info "Checking NVIDIA GPU availability for Jellyfin..."
+        check_nvidia_gpu_availability 60
+        log_success "NVIDIA GPU verified - proceeding with GPU acceleration"
         
-        if check_nvidia_gpu_availability 60; then
-            log_success "NVIDIA GPU devices available - using full GPU acceleration"
-            GPU_AVAILABLE=true
-        else
-            log_warning "NVIDIA GPU devices not available - creating fallback configuration"
-            
-            # Create fallback compose file without GPU acceleration
-            FALLBACK_COMPOSE_FILE="$(dirname "$COMPOSE_FILE")/podman-compose-no-gpu.yml"
-            create_gpu_fallback_compose "$COMPOSE_FILE" "$FALLBACK_COMPOSE_FILE"
-            ACTIVE_COMPOSE_FILE="$FALLBACK_COMPOSE_FILE"
-            GPU_AVAILABLE=false
-        fi
-    else
-        if [[ "$SKIP_GPU_CHECK" == "true" ]]; then
-            log_info "GPU check skipped - using original configuration"
-        else
-            log_info "Jellyfin not in service list - skipping GPU check"
-        fi
-        GPU_AVAILABLE=true  # Assume available when skipping check
+        # Check and maintain NVIDIA CDI configuration for rootless Podman
+        check_nvidia_cdi_configuration
     fi
     
-    # Build the command with the selected compose file
-    CMD="$COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE up -d $BUILD_FLAG $FORCE_RECREATE $SERVICES"
+    # Build the command
+    CMD="$COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE up -d $BUILD_FLAG $FORCE_RECREATE $SERVICES"
     
     log_info "Executing: $CMD"
     
@@ -259,23 +315,15 @@ main() {
     if $CMD; then
         SUCCESS=true
         log_success "Media stack started successfully!"
-        
-        # Display GPU status in success message
-        if [[ "$GPU_AVAILABLE" == true ]]; then
-            log_success "Jellyfin started with NVIDIA GPU acceleration enabled"
-        elif [[ -n "$FALLBACK_COMPOSE_FILE" ]]; then
-            log_warning "Jellyfin started without GPU acceleration (GPU devices not available)"
-            log_info "GPU acceleration will be available after next restart once NVIDIA drivers are loaded"
-        fi
-        
+    
         echo ""
         log_info "Service status:"
-        $COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE ps
+        $COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE ps
         echo ""
         log_info "Useful commands:"
         echo "  View logs: ./scripts/podman-logs.sh"
         echo "  Stop stack: ./scripts/podman-down.sh"
-        echo "  Check status: $COMPOSE_CMD --env-file $ENV_FILE -f $ACTIVE_COMPOSE_FILE ps"
+        echo "  Check status: $COMPOSE_CMD --env-file $ENV_FILE -f $COMPOSE_FILE ps"
         echo ""
         log_info "Web interfaces:"
         echo "  Prowlarr:    http://localhost:9696"
@@ -287,12 +335,6 @@ main() {
         echo "  FlareSolverr: http://localhost:8191"
     else
         log_error "Failed to start media stack!"
-    fi
-    
-    # Cleanup fallback compose file if it was created
-    if [[ -n "$FALLBACK_COMPOSE_FILE" ]] && [[ -f "$FALLBACK_COMPOSE_FILE" ]]; then
-        log_info "Cleaning up temporary GPU fallback configuration"
-        rm -f "$FALLBACK_COMPOSE_FILE"
     fi
     
     # Exit with appropriate code

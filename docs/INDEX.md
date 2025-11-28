@@ -41,7 +41,7 @@ Priority reading order
 
 8) AirVPN Validation Checklist (optional)
    - Read: [docs/AIRVPN-VALIDATION-CHECKLIST.md](docs/AIRVPN-VALIDATION-CHECKLIST.md:1)
-   - Why: Deep validation and migration notes (PIA → AirVPN)
+   - Why: Deep validation and configuration verification
    - When: When verifying VPN configuration end-to-end
 
 Role-based quick paths

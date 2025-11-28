@@ -13,6 +13,7 @@ Reading order: 4/8 • Optional (NVIDIA only)
 - [Usage Instructions](#usage-instructions)
 - [Configuration Context](#configuration-context)
 - [Troubleshooting](#troubleshooting)
+- [Driver Update Maintenance](#driver-update-maintenance)
 
 ## Problem Description
 
@@ -293,6 +294,7 @@ systemctl --user status media-stack.service
 ```
 
 ### Monitoring GPU Status
+
 ```bash
 # Check service logs for GPU status
 journalctl --user -u media-stack.service -f
@@ -497,6 +499,233 @@ podman system info
 
 ---
 
+## Driver Update Maintenance
+
+### Problem: NVIDIA Driver Updates Break CDI Configuration
+
+When NVIDIA drivers are updated, the CDI (Container Device Interface) configuration may still reference the old driver version. This mismatch causes "missing CUDA libraries" errors in containers that use GPU acceleration.
+
+### Rootless, Sudo-Free Automatic Detection and Prevention
+
+The media stack now includes automatic detection and self-healing of driver/CDI version mismatches using a rootless approach:
+
+- **User-Writable CDI Configuration**: Uses `${HOME}/.config/containers/cdi/nvidia.yaml` instead of system-wide `/etc/cdi/nvidia.yaml`
+- **State File Tracking**: Maintains `${HOME}/.config/containers/cdi/nvidia-driver-version.txt` to track the last known driver version
+- **Startup Check**: [`scripts/podman-up.sh`](scripts/podman-up.sh:1) automatically compares the current NVIDIA driver version with the stored state
+- **Automatic Regeneration**: When a mismatch is detected, the script automatically regenerates the CDI configuration using `nvidia-ctk cdi generate --output="${HOME}/.config/containers/cdi/nvidia.yaml"` (no sudo required)
+- **Verification**: After regeneration, the script updates the state file with the new version
+- **Rootless Operation**: All operations are performed without requiring sudo privileges
+
+### Key Benefits of the Rootless Approach
+
+1. **No Sudo Required**: All CDI operations work without elevated privileges
+2. **User Isolation**: Each user maintains their own CDI configuration
+3. **Automatic Updates**: Driver updates are handled transparently
+4. **State Persistence**: The state file ensures CDI is only regenerated when necessary
+5. **Backward Compatibility**: Works with existing rootless Podman setups
+
+### Manual Recovery After Driver Updates
+
+In most cases, the media stack will automatically recover from driver updates. However, if you encounter persistent issues:
+
+#### Step 1: Manual CDI Regeneration (if auto-fix failed)
+```bash
+# Rootless method - preferred
+nvidia-ctk cdi generate --output="${HOME}/.config/containers/cdi/nvidia.yaml"
+
+# Alternative method - let Podman handle it (may require sudo)
+sudo podman system migrate
+```
+
+#### Step 2: Verify the Fix
+```bash
+# Check current driver version
+nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits
+
+# Check stored version
+cat "${HOME}/.config/containers/cdi/nvidia-driver-version.txt"
+
+# Verify CDI configuration exists
+ls -la "${HOME}/.config/containers/cdi/nvidia.yaml"
+```
+
+#### Step 3: Restart the Media Stack
+```bash
+# Using the startup script
+./scripts/podman-up.sh
+
+# Or using systemd
+systemctl --user restart media-stack.service
+```
+
+### Proactive Driver Update Procedure
+
+To avoid service interruption during driver updates:
+
+#### Before Updating Drivers
+```bash
+# Stop the media stack cleanly
+./scripts/podman-down.sh
+
+# Update NVIDIA drivers (using your package manager)
+# For Fedora/RHEL:
+sudo dnf update nvidia-driver
+# For Ubuntu/Debian:
+sudo apt update && sudo apt install nvidia-driver-XXX
+```
+
+#### After Driver Installation
+```bash
+# Reboot to load new drivers (recommended)
+sudo reboot
+
+# Or reload drivers without reboot (advanced)
+sudo modprobe -r nvidia_drm nvidia_uvm nvidia_modeset nvidia
+sudo modprobe nvidia nvidia_modeset nvidia_uvm nvidia_drm
+
+# The media stack will automatically detect the driver change
+# and regenerate the CDI configuration on next startup
+./scripts/podman-up.sh
+```
+
+### Troubleshooting Version Mismatch Issues
+
+#### Error Message Example
+```
+[INFO] Checking NVIDIA CDI configuration for rootless Podman...
+[INFO] Current NVIDIA driver version: 580.105.08
+[INFO] Previously stored driver version: 570.86.16
+[INFO] Driver version change detected (old: 570.86.16, new: 580.105.08)
+[INFO] Regenerating rootless CDI configuration...
+[SUCCESS] Rootless CDI configuration generated successfully
+[SUCCESS] Driver version state updated: 580.105.08
+[SUCCESS] CDI configuration file created: /home/user/.config/containers/cdi/nvidia.yaml
+```
+
+If automatic regeneration fails:
+```
+[ERROR] nvidia-ctk command not found - cannot generate CDI configuration
+[ERROR] Please install nvidia-container-toolkit
+```
+
+#### Common Scenarios and Solutions
+
+**1. CDI Config Missing or Corrupted**
+```bash
+# Check if CDI config exists in the correct location
+ls -la "${HOME}/.config/containers/cdi/nvidia.yaml"
+
+# Check state file
+ls -la "${HOME}/.config/containers/cdi/nvidia-driver-version.txt"
+
+# Regenerate manually if needed
+mkdir -p "${HOME}/.config/containers/cdi"
+nvidia-ctk cdi generate --output="${HOME}/.config/containers/cdi/nvidia.yaml"
+echo "$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits | tr -d '[:space:]')" > "${HOME}/.config/containers/cdi/nvidia-driver-version.txt"
+```
+
+**2. Multiple Driver Versions Installed**
+```bash
+# Check which driver is actually loaded
+cat /proc/driver/nvidia/version
+
+# Remove old drivers (package manager specific)
+# Fedora/RHEL:
+sudo dnf remove nvidia-driver-OLD_VERSION
+# Ubuntu/Debian:
+sudo apt remove nvidia-driver-OLD_VERSION
+```
+
+**3. CDI Generation Fails**
+```bash
+# Check NVIDIA container toolkit installation
+which nvidia-ctk
+
+# Reinstall if necessary
+# Fedora/RHEL:
+sudo dnf reinstall nvidia-container-toolkit
+# Ubuntu/Debian:
+sudo apt reinstall nvidia-container-toolkit
+
+# Try manual generation with debug output
+nvidia-ctk cdi generate --debug --output="${HOME}/.config/containers/cdi/nvidia.yaml"
+```
+
+**4. Permission Issues**
+```bash
+# Ensure the CDI directory exists and is writable
+mkdir -p "${HOME}/.config/containers/cdi"
+chmod 755 "${HOME}/.config/containers/cdi"
+
+# Check directory permissions
+ls -la "${HOME}/.config/containers/"
+```
+
+### Automation Options
+
+The media stack now includes built-in automatic CDI recovery, so additional automation is typically not needed. However, for advanced scenarios:
+
+#### Enhanced Systemd Service with Fallback
+The standard systemd service at `~/.config/systemd/user/media-stack.service` now includes automatic CDI recovery through the main script, so no additional wrapper is needed.
+
+#### Cron Job for Periodic Health Checks
+```bash
+# Add to crontab for daily GPU health checks
+0 2 * * * /home/haint/media-stack/maintenance/maintenance.sh health
+```
+
+#### Custom Recovery Script for Non-Standard Setups
+If you have a non-standard setup that requires additional recovery steps:
+
+```bash
+#!/bin/bash
+# custom-recovery.sh - Custom recovery for special configurations
+
+# First try the standard auto-fix
+if ! /home/haint/media-stack/scripts/podman-up.sh; then
+    echo "Standard auto-fix failed, attempting custom recovery..."
+    
+    # Add your custom recovery steps here
+    # For example: reinstall drivers, update container toolkit, etc.
+    
+    # Try again after custom recovery
+    /home/haint/media-stack/scripts/podman-up.sh
+fi
+```
+
+### Version Check Implementation Details
+
+The version check works by:
+
+1. **Driver Version Detection**:
+   - Primary: `nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits`
+   - Fallback: Extract from `/proc/driver/nvidia/version`
+
+2. **State File Management**:
+   - Location: `${HOME}/.config/containers/cdi/nvidia-driver-version.txt`
+   - Content: Plain text driver version string
+   - Purpose: Track last known driver version to avoid unnecessary CDI regeneration
+
+3. **CDI Configuration Path**:
+   - Rootless location: `${HOME}/.config/containers/cdi/nvidia.yaml`
+   - Generated by: `nvidia-ctk cdi generate --output="${HOME}/.config/containers/cdi/nvidia.yaml"`
+   - No sudo required
+
+4. **Comparison Logic**:
+   - String-based exact version matching
+   - Graceful handling of missing state file (triggers regeneration)
+   - Clear error messaging with remediation steps
+
+### Best Practices
+
+1. **Update Drivers During Maintenance Windows**: Plan driver updates during scheduled downtime
+2. **Test in Staging**: If possible, test driver updates in a non-production environment first
+3. **Monitor Logs**: Watch for CDI regeneration messages in startup logs
+4. **Document Versions**: Keep track of working driver/CDI version combinations
+5. **Rootless First**: Prefer the rootless CDI approach over system-wide configurations
+
+---
+
 ## Summary
 
 The NVIDIA GPU timing race condition fix provides a robust solution that:
@@ -507,5 +736,10 @@ The NVIDIA GPU timing race condition fix provides a robust solution that:
 - **Provides graceful fallback** when GPU devices are not ready
 - **Maintains backward compatibility** with existing configurations
 - **Improves startup performance** from 35-40 seconds to ~2.7 seconds
+- **Automatically handles driver updates** with self-healing CDI regeneration to prevent "missing CUDA libraries" errors
+- **Reduces manual intervention** by automatically detecting and fixing driver/CDI version mismatches
+- **Uses rootless, sudo-free operations** for CDI configuration management
+- **Maintains user-isolated CDI configurations** in `${HOME}/.config/containers/cdi/`
+- **Tracks driver version state** to avoid unnecessary CDI regeneration
 
-The implementation is transparent to users and requires no configuration changes while providing significant reliability improvements for systems with NVIDIA GPU hardware.
+The implementation is transparent to users and requires no configuration changes while providing significant reliability improvements for systems with NVIDIA GPU hardware. The automatic CDI regeneration feature ensures that driver updates no longer require manual intervention, making the media stack more resilient and maintenance-friendly. The new rootless approach eliminates the need for sudo privileges while maintaining full functionality and improving security through user isolation.
