@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Commit message hook for media-stack project
+# Enforces Conventional Commits format
+
+commit_regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+$'
+
+commit_msg=$(cat "$1")
+
+if [[ ! $commit_msg =~ $commit_regex ]]; then
+    echo "ERROR: Commit message does not follow Conventional Commits format."
+    echo ""
+    echo "Expected format: <type>(<scope>): <description>"
+    echo ""
+    echo "Types:"
+    echo "  feat:     A new feature"
+    echo "  fix:      A bug fix"
+    echo "  docs:     Documentation only changes"
+    echo "  style:    Changes that do not affect the meaning of the code"
+    echo "  refactor: A code change that neither fixes a bug nor adds a feature"
+    echo "  perf:     A code change that improves performance"
+    echo "  test:     Adding missing tests or correcting existing tests"
+    echo "  build:    Changes that affect the build system or external dependencies"
+    echo "  ci:       Changes to our CI configuration files and scripts"
+    echo "  chore:    Changes to the build process or auxiliary tools"
+    echo "  revert:   Reverts a previous commit"
+    echo ""
+    echo "Examples:"
+    echo "  feat(auth): add login validation"
+    echo "  fix(parser): handle empty input correctly"
+    echo "  docs: update installation guide"
+    echo ""
+    exit 1
+fi
+
+echo "Commit message format is valid."

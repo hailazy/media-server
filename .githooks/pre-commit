@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Pre-commit hook for media-stack project
+# Checks for trailing whitespace and runs shellcheck on modified .sh files
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Check for trailing whitespace
+echo "Checking for trailing whitespace..."
+if git diff --cached --check | grep -E '^\+.*\s+$'; then
+    echo "ERROR: Trailing whitespace found. Please remove it before committing."
+    echo "You can fix this with: git diff --cached --name-only | xargs sed -i 's/[[:space:]]*$//'"
+    exit 1
+fi
+
+# Run shellcheck on modified .sh files if available
+if command -v shellcheck >/dev/null 2>&1; then
+    echo "Running shellcheck on modified .sh files..."
+    # Get list of modified .sh files in staging area
+    shell_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
+
+    if [ -n "$shell_files" ]; then
+        echo "Checking files: $shell_files"
+        if ! echo "$shell_files" | xargs shellcheck; then
+            echo "ERROR: shellcheck found issues. Please fix them before committing."
+            exit 1
+        fi
+    else
+        echo "No .sh files modified, skipping shellcheck."
+    fi
+else
+    echo "shellcheck not found, skipping shell checks."
+fi
+
+echo "Pre-commit checks passed."
