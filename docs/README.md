@@ -62,6 +62,7 @@ A complete Podman-based media stack solution with automated downloading, managem
 		- [📚 Comprehensive Documentation](#-comprehensive-documentation)
 		- [🔧 Available Tools](#-available-tools)
 		- [🏗️ Service Compatibility Status](#️-service-compatibility-status)
+	- [🤝 Contributing](#-contributing)
 
 ## 🎯 Overview
 
@@ -220,3 +221,10 @@ All services are **fully tested** and **production-ready** with Podman:
 | **qBittorrent** | ✅ Fully Supported | Shared networking, automatic port updates |
 
 The entire system is containerized with Podman, providing secure, isolated environments for each service.
+
+## 🤝 Contributing
+
+We welcome contributions! Please see the [Development & Contributing](QUICK-REF.md#development--contributing) section in the Quick Reference guide for details on:
+- Setting up Git hooks
+- Commit message conventions
+- Pre-commit checks

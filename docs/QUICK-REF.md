@@ -277,6 +277,35 @@ curl -I http://localhost:8096  # Jellyfin
 
 ---
 
+## 💻 Development & Contributing
+
+### **Setup**
+```bash
+# Enable Git hooks (Required for contributors)
+git config core.hooksPath .githooks
+```
+
+### **Commit Convention**
+We follow [Conventional Commits](https://www.conventionalcommits.org/) structure: `<type>(<scope>): <description>`
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Formatting, missing semi-colons, etc.
+- `refactor`: Code change that neither fixes a bug nor adds a feature
+- `chore`: Maintenance, build process, auxiliary tools
+
+**Example:** `feat(vpn): add new server location support`
+
+### **Pre-commit Checks**
+The configured hooks will automatically verify:
+- **Whitespace**: No trailing whitespace allowed.
+- **Shellcheck**: Validates shell scripts for errors and best practices.
+- **Commit Message**: Enforces the conventional commit format.
+
+---
+
 ## 🎯 Quick Start Checklist
 
 ### **Setup** (First Time)
