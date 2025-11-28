@@ -1,23 +1,15 @@
 # Auto-Commit Rule
 
-When a task is completed successfully, you MUST automatically commit the changes using the following convention:
+**CRITICAL INSTRUCTION:** You are STRICTLY FORBIDDEN from using the `attempt_completion` tool until you have successfully committed your changes to git.
 
-Format: `<type>(<scope>): <description>`
+Before you can finish any task, you MUST execute the following sequence:
 
-Types:
-- feat: A new feature
-- fix: A bug fix
-- docs: Documentation only changes
-- style: Changes that do not affect the meaning of the code (white-space, formatting, etc)
-- refactor: A code change that neither fixes a bug nor adds a feature
-- perf: A code change that improves performance
-- test: Adding missing tests or correcting existing tests
-- chore: Changes to the build process or auxiliary tools and libraries such as documentation generation
+1.  **Verify**: Ensure all tests pass and the code is stable.
+2.  **Stage**: Run `git add .` to stage all changes.
+3.  **Commit**: Run `git commit -m "type(scope): description"`
+    *   **Format**: `<type>(<scope>): <description>`
+    *   **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
+    *   **Example**: `feat(auth): add login validation`
+4.  **Retry**: If the commit fails (e.g., due to hooks), you MUST fix the issue and try to commit again.
 
-Example: `feat(auth): add login validation`
-
-**Procedure:**
-1. Verify all tests pass (if applicable).
-2. Stage all changed files: `git add .`
-3. Commit with a descriptive message: `git commit -m "type(scope): description"`
-4. If the commit fails due to hooks, fix the issues and retry.
+**ONLY** after the `git commit` command returns successfully are you allowed to use `attempt_completion`.
