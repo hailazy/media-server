@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"Branch: $(git branch --show-current 2>/dev/null || echo 'n/a')\" && echo \"Recent commits:\" && git log --oneline -5 2>/dev/null && echo '' && echo '--- Memory Bank ---' && for f in .memory-bank/brief.md .memory-bank/context.md .memory-bank/tech.md; do [ -f \"$f\" ] && echo \"=== $(basename $f) ===\" && head -50 \"$f\" && echo ''; done && echo '--- End Memory Bank ---' || true",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '(rm -rf /|git push.*--force|git reset --hard|git clean -fd)'; then echo 'BLOCKED: Dangerous command. Ask user for confirmation.' >&2; exit 2; fi && if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git (add|commit)'; then SENSITIVE=$(git diff --cached --name-only 2>/dev/null | grep -iE '\\.(env|key|pem)$|credentials|secrets' || true); if [ -n \"$SENSITIVE\" ]; then echo \"BLOCKED: Sensitive files staged: $SENSITIVE\" >&2; exit 2; fi; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
