@@ -1,6 +1,6 @@
 # Media Server — Project Context
 
-> Soul & identity: see global ~/.claude/CLAUDE.md
+> Soul & identity: see ~/.claude/CLAUDE.md or ~/.gemini/GEMINI.md
 
 ## Project Values
 - **Reliability over features** — A media server must be stable. Prefer battle-tested approaches over cutting-edge ones
@@ -22,7 +22,7 @@ Auto-loaded at session start (brief, context, tech). Full files in `.memory-bank
 - `tech.md` — Tech stack and tooling
 - `tasks.md` — Task tracking
 
-After major tasks or architectural changes, update relevant Memory Bank files (use `/update-mb`).
+After major tasks or architectural changes, update relevant Memory Bank files.
 
 ## Security
 **CRITICAL**: NEVER commit, push, or expose secrets, API keys, tokens, or credentials to version control.
