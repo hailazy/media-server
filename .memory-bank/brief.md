@@ -1,3 +1,13 @@
 # Media Server
 
-<!-- TODO: Define project goals and scope -->
+## One-Liner
+<!-- TODO -->
+
+## Key Facts
+| Field | Value |
+|-------|-------|
+| Stack | <!-- TODO --> |
+| Status | inactive |
+
+## Current Focus
+<!-- TODO -->
