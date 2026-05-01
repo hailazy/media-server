@@ -4,18 +4,12 @@
 
 set -euo pipefail
 
-# Determine project paths based on where script is called from
-if [[ "$(basename "$(pwd)")" == "maintenance" ]]; then
-    # Called directly from maintenance directory
-    PROJECT_ROOT=".."
-    COMPOSE_FILE="../core/podman-compose.yml"
-    ENV_FILE="../.env"
-else
-    # Called via wrapper from root directory
-    PROJECT_ROOT="."
-    COMPOSE_FILE="core/podman-compose.yml"
-    ENV_FILE=".env"
-fi
+# Resolve paths from script location (script lives at home-server/media/maintenance/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MEDIA_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$MEDIA_ROOT")"
+COMPOSE_FILE="${MEDIA_ROOT}/compose.yml"
+ENV_FILE="${MEDIA_ROOT}/.env"
 
 # Colors for output
 RED='\033[0;31m'

@@ -1,0 +1,25 @@
+services:
+  dashboard:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: home-dashboard
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:7575:7575"
+    volumes:
+      - ./data:/appdata:z
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7575"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - home-net
+
+networks:
+  home-net:
+    name: home-net
+    external: true

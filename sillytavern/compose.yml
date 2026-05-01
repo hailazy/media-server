@@ -1,0 +1,29 @@
+services:
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    container_name: home-sillytavern
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/home/node/app/data:z
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Ho_Chi_Minh
+      - SILLYTAVERN_LISTEN=true
+      - SILLYTAVERN_WHITELISTMODE=false
+      - SILLYTAVERN_SECURITYOVERRIDE=true
+    mem_limit: 2g
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - home-net
+
+networks:
+  home-net:
+    name: home-net
+    external: true

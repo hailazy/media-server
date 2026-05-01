@@ -31,15 +31,18 @@ else
 fi
 
 # Set working directory to project root
-cd /home/haint/media-stack
+cd /home/haint/Projects/home-server
 
-# Source environment file if it exists
-if [[ -f core/.env ]]; then
+# Source media section env if present
+if [[ -f media/.env ]]; then
     set -a
-    source core/.env
+    source media/.env
     set +a
 fi
 
-# Execute the actual startup script
-echo "[WRAPPER] Executing scripts/podman-up.sh" >&2
-exec ./scripts/podman-up.sh "$@"
+# Default to bringing up the media section if no args provided
+SECTION="${1:-media}"
+shift || true
+
+echo "[WRAPPER] Executing scripts/up.sh ${SECTION} $*" >&2
+exec ./scripts/up.sh "$SECTION" "$@"

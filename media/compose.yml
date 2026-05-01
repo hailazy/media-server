@@ -205,7 +205,7 @@ services:
       # Optional: Specify specific server names
       - SERVER_NAMES=${AIRVPN_SERVER_NAMES}
     volumes:
-      - ../services/gluetun:/gluetun:Z # for scripts and legacy configs
+      - ./services/gluetun:/gluetun:Z # for scripts and legacy configs
     dns:
       - 8.8.8.8
       - 1.1.1.1

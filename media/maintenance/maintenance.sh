@@ -11,19 +11,16 @@ set -euo pipefail
 # Commands: health, logs, diagnostic, cleanup, debug-enable, debug-disable
 # =============================================================================
 
-# Script configuration - Determine if called from root or from maintenance directory
-if [[ "$(basename "$(pwd)")" == "maintenance" ]]; then
-    # Called directly from maintenance directory
-    PROJECT_ROOT="$(cd .. && pwd)"
-else
-    # Called via wrapper from root directory
-    PROJECT_ROOT="$(pwd)"
-fi
+# Script lives at home-server/media/maintenance/maintenance.sh
+# MEDIA_ROOT = home-server/media, PROJECT_ROOT = home-server (repo root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MEDIA_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$MEDIA_ROOT")"
 
 LOG_DIR="${PROJECT_ROOT}/logs"
 TEMP_DIR="${PROJECT_ROOT}/tmp"
-COMPOSE_FILE="${PROJECT_ROOT}/core/podman-compose.yml"
-ENV_FILE="${PROJECT_ROOT}/core/.env"
+COMPOSE_FILE="${MEDIA_ROOT}/compose.yml"
+ENV_FILE="${MEDIA_ROOT}/.env"
 DEBUG_LOG_FILE="${LOG_DIR}/maintenance-debug.log"
 
 # Color codes for output
@@ -77,7 +74,7 @@ check_environment_file() {
     log_debug "Checking environment configuration..."
     if [[ ! -f "$ENV_FILE" ]]; then
         log_error "Environment file not found: $ENV_FILE"
-        log_info "Create it from core/.env.example: cp core/.env.example core/.env"
+        log_info "Create it from media/.env.example: cp media/.env.example media/.env"
         return 1
     fi
     

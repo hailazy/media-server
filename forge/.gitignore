@@ -1,0 +1,6 @@
+# Forge runtime data — large, user-local, never commit
+data/
+*.safetensors
+*.ckpt
+*.pt
+*.bin

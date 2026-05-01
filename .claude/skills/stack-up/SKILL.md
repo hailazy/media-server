@@ -1,35 +1,35 @@
 ---
 name: stack-up
-description: Start the Podman media stack with pre-flight checks and health verification
-disable-model-invocation: true
-argument-hint: "[service name or flags]"
+description: "Start a home-server section (media|forge|sillytavern|dashboard|all)"
+disable-model-invocation: false
+argument-hint: "<section> [extra args]"
+allowed-tools: Bash
 ---
 
-Start the Podman media stack with pre-flight checks.
+Start a home-server section with pre-flight checks.
+
+`$ARGUMENTS` first token is the section: `media`, `forge`, `sillytavern`, `dashboard`, or `all`. Remaining tokens forward to podman-compose.
 
 1. **Pre-flight checks** (report issues before starting):
    - `which podman` and `which podman-compose`
-   - Compose file exists: `core/podman-compose.yml`
-   - Env file exists: `core/.env` (check existence only — NEVER read contents, it has secrets)
-   - NVIDIA GPU: `ls /dev/nvidia*`
+   - Compose file exists: `<section>/compose.yml`
+   - Env file exists: `<section>/.env` (check existence only — NEVER read contents)
+   - For media/forge: NVIDIA GPU `ls /dev/nvidia*`
    - Report any issues and ask to confirm before proceeding
 
-2. **Start the stack:**
+2. **Start the section:**
    ```
-   ./scripts/podman-up.sh $ARGUMENTS
+   ./scripts/up.sh $ARGUMENTS
    ```
 
-3. **Post-start health** (wait ~15s for containers to init):
+3. **Post-start health** (wait ~15s):
    ```
-   podman-compose -f core/podman-compose.yml ps
+   podman-compose -f <section>/compose.yml ps
    ```
    Verify all containers show "Up" / "running".
 
-4. **Report** with service URLs:
-   - Prowlarr: http://localhost:9696
-   - Sonarr: http://localhost:8989
-   - Radarr: http://localhost:7878
-   - Bazarr: http://localhost:6767
-   - qBittorrent: http://localhost:8080
-   - Jellyfin: http://localhost:8096
-   - FlareSolverr: http://localhost:8191
+4. **Report** with service URLs (relevant to section):
+   - media: Prowlarr 9696, Sonarr 8989, Radarr 7878, Bazarr 6767, qBittorrent 8080, Jellyfin 8096, FlareSolverr 8191
+   - forge: WebUI/API http://localhost:7860
+   - sillytavern: http://localhost:8000 (default)
+   - dashboard: Homarr port (TBD when bootstrapped)

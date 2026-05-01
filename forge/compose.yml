@@ -1,0 +1,42 @@
+services:
+  forge:
+    image: ghcr.io/ai-dock/stable-diffusion-webui-forge:latest-cuda
+    container_name: home-forge
+    restart: unless-stopped
+    user: "0:0"
+    ports:
+      - "127.0.0.1:7860:7860"  # localhost-only — no auth on Forge, never expose to LAN. Container clients use http://home-forge:7860 via home-net DNS.
+    devices:
+      - nvidia.com/gpu=all
+    security_opt:
+      - label=disable
+    volumes:
+      - ./data/forge/models:/opt/stable-diffusion-webui-forge/models:z
+      - ./data/forge/embeddings:/opt/stable-diffusion-webui-forge/embeddings:z
+      - ./data/forge/outputs:/opt/stable-diffusion-webui-forge/outputs:z
+      - ./data/forge/extensions:/opt/stable-diffusion-webui-forge/extensions:z
+      - ./data/forge/config:/opt/stable-diffusion-webui-forge/config:z
+      - ./forge_args.conf:/etc/forge_args.conf:z,ro
+    environment:
+      - WEBUI_FLAGS=--api --xformers --cuda-malloc --cuda-stream --pin-shared-memory
+      - TZ=Asia/Ho_Chi_Minh
+      - NVIDIA_VISIBLE_DEVICES=all
+      - WEB_ENABLE_AUTH=false
+      - WEB_ENABLE_HTTPS=false
+      - SERVICEPORTAL_LOGIN=false
+    mem_limit: 12g
+    cpus: 4
+    shm_size: 8g
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:7860/sdapi/v1/sd-models"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    networks:
+      - home-net
+
+networks:
+  home-net:
+    name: home-net
+    external: true
