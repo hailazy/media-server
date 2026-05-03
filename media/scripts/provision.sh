@@ -25,6 +25,8 @@ set -a; source "$ENV_FILE"; set +a
 
 : "${QBIT_USER:=admin}"
 : "${QBIT_PASS:?Set QBIT_PASS in $ENV_FILE before running provision.sh}"
+: "${ARR_USER:?Set ARR_USER in $ENV_FILE — login for Prowlarr/Sonarr/Radarr UIs}"
+: "${ARR_PASS:?Set ARR_PASS in $ENV_FILE — login password for arr UIs}"
 
 # Endpoints (provision.sh runs from host → uses host-published ports)
 PROWLARR=http://localhost:9696
@@ -102,9 +104,66 @@ BAZARR_KEY=$(extract_bazarr_key)
 log_success "all keys extracted"
 
 # ---------------------------------------------------------------------------
-# Phase 3 — qBittorrent permanent password
+# Phase 3 — arr UI authentication (Prowlarr/Sonarr/Radarr v4+ enforce auth)
 # ---------------------------------------------------------------------------
-log_info "Phase 3: qBittorrent permanent password..."
+# v4+ services launch with AuthenticationMethod=None + AuthenticationRequired=Enabled
+# which blocks the UI behind a "select valid auth method" prompt. We set Forms auth
+# with disabledForLocalAddresses — UI accessible from 127.0.0.1/LAN without login,
+# but ARR_USER/ARR_PASS required if exposed via reverse proxy or remote access.
+log_info "Phase 3: arr UI authentication..."
+
+arr_set_auth() {
+  local label="$1" base_url="$2" api_key="$3" api_ver="$4"
+  local config_url="$base_url/$api_ver/config/host"
+
+  local current_method
+  current_method=$(curl -s -H "X-Api-Key: $api_key" "$config_url" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("authenticationMethod",""))')
+
+  if [[ "$current_method" =~ ^(forms|basic)$ ]]; then
+    log_success "$label auth already set (method=$current_method)"
+    return 0
+  fi
+
+  # GET full config, mutate auth fields, PUT back (config/host requires full object)
+  local payload
+  payload=$(ARR_USER_VAL="$ARR_USER" ARR_PASS_VAL="$ARR_PASS" \
+            CONFIG_URL="$config_url" API_KEY="$api_key" \
+            python3 -c '
+import os, json, urllib.request
+req = urllib.request.Request(
+  os.environ["CONFIG_URL"],
+  headers={"X-Api-Key": os.environ["API_KEY"]},
+)
+cfg = json.loads(urllib.request.urlopen(req).read())
+cfg["authenticationMethod"]    = "forms"
+cfg["authenticationRequired"]  = "disabledForLocalAddresses"
+cfg["username"]                = os.environ["ARR_USER_VAL"]
+cfg["password"]                = os.environ["ARR_PASS_VAL"]
+cfg["passwordConfirmation"]    = os.environ["ARR_PASS_VAL"]
+print(json.dumps(cfg))
+')
+
+  local code
+  code=$(curl -s -o "$RESP" -w '%{http_code}' \
+    -X PUT -H "X-Api-Key: $api_key" -H "Content-Type: application/json" \
+    -d "$payload" "$config_url")
+  if [[ "$code" =~ ^20[02]$ ]]; then
+    log_success "$label auth set (forms, disabled for local)"
+  else
+    log_error "$label auth set failed (HTTP $code): $(cat "$RESP")"
+    return 1
+  fi
+}
+
+arr_set_auth "Prowlarr" "$PROWLARR" "$PROWLARR_KEY" "api/v1"
+arr_set_auth "Sonarr"   "$SONARR"   "$SONARR_KEY"   "api/v3"
+arr_set_auth "Radarr"   "$RADARR"   "$RADARR_KEY"   "api/v3"
+
+# ---------------------------------------------------------------------------
+# Phase 4 — qBittorrent permanent password
+# ---------------------------------------------------------------------------
+log_info "Phase 4: qBittorrent permanent password..."
 
 qbt_login() {
   local user="$1" pass="$2"
@@ -149,9 +208,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 4 — Prowlarr applications (Sonarr + Radarr)
+# Phase 5 — Prowlarr applications (Sonarr + Radarr)
 # ---------------------------------------------------------------------------
-log_info "Phase 4: Prowlarr applications..."
+log_info "Phase 5: Prowlarr applications..."
 
 prowlarr_app_exists() {
   local name="$1"
@@ -205,9 +264,9 @@ add_prowlarr_app "Radarr" "Radarr" "http://radarr:7878" "$RADARR_KEY" \
   '[2000,2010,2020,2030,2040,2045,2050,2060,2070,2080,2090]'
 
 # ---------------------------------------------------------------------------
-# Phase 5 — Prowlarr FlareSolverr proxy
+# Phase 6 — Prowlarr FlareSolverr proxy
 # ---------------------------------------------------------------------------
-log_info "Phase 5: Prowlarr FlareSolverr proxy..."
+log_info "Phase 6: Prowlarr FlareSolverr proxy..."
 
 flaresolverr_exists() {
   curl -s -H "X-Api-Key: $PROWLARR_KEY" "$PROWLARR/api/v1/indexerproxy" \
@@ -244,9 +303,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 6 — Sonarr/Radarr download client (qBittorrent)
+# Phase 7 — Sonarr/Radarr download client (qBittorrent)
 # ---------------------------------------------------------------------------
-log_info "Phase 6: Sonarr/Radarr → qBittorrent download client..."
+log_info "Phase 7: Sonarr/Radarr → qBittorrent download client..."
 
 arr_dlclient_exists() {
   local arr_url="$1" arr_key="$2"
@@ -305,9 +364,9 @@ add_qbt_to_arr "Sonarr" "$SONARR" "$SONARR_KEY" "tvCategory"    "tv-sonarr"
 add_qbt_to_arr "Radarr" "$RADARR" "$RADARR_KEY" "movieCategory" "movies-radarr"
 
 # ---------------------------------------------------------------------------
-# Phase 7 — Sonarr/Radarr root folders
+# Phase 8 — Sonarr/Radarr root folders
 # ---------------------------------------------------------------------------
-log_info "Phase 7: Sonarr/Radarr root folders..."
+log_info "Phase 8: Sonarr/Radarr root folders..."
 
 add_root_folder() {
   local label="$1" arr_url="$2" arr_key="$3" path="$4"
@@ -332,9 +391,9 @@ add_root_folder "Sonarr" "$SONARR" "$SONARR_KEY" "/tv"
 add_root_folder "Radarr" "$RADARR" "$RADARR_KEY" "/movies"
 
 # ---------------------------------------------------------------------------
-# Phase 8 — Bazarr → Sonarr/Radarr connection
+# Phase 9 — Bazarr → Sonarr/Radarr connection
 # ---------------------------------------------------------------------------
-log_info "Phase 8: Bazarr → Sonarr/Radarr..."
+log_info "Phase 9: Bazarr → Sonarr/Radarr..."
 
 # Bazarr's POST /api/system/settings expects form-urlencoded keys in the format
 # `settings-{section}-{key}` (NOT JSON). Source: Bazarr api/system/settings.py

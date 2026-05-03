@@ -96,19 +96,21 @@ If the IP shows your home WAN, qBT is leaking. Check `network_mode: container:gl
 ## First-time setup (or post-wipe re-deploy)
 
 ```bash
-# 1. Configure media/.env (copy from .env.example, fill QBIT_USER/QBIT_PASS + AirVPN keys)
+# 1. Configure media/.env (copy from .env.example, fill credentials + AirVPN keys)
 cp media/.env.example media/.env
 $EDITOR media/.env
+#   Required: AIRVPN_*, QBIT_USER/QBIT_PASS, ARR_USER/ARR_PASS
 
 # 2. Bring stack up
 ./scripts/up.sh media
 
-# 3. Wire all services together (Prowlarr↔arrs, qBT download client, Bazarr, root folders)
+# 3. Wire all services together (auth, Prowlarr↔arrs, qBT, Bazarr, root folders)
 ./media/scripts/provision.sh
 ```
 
 `provision.sh` is idempotent — safe to re-run any time. It:
 - Reads arr API keys from `media/data/<service>/config.{xml,yaml}` (auto-discovered, no manual copy)
+- Sets Forms auth on Prowlarr/Sonarr/Radarr from `ARR_USER`/`ARR_PASS`, with login disabled for local addresses (no UI prompt from localhost/LAN)
 - Sets qBittorrent permanent password from `QBIT_PASS` (replaces the temp from logs)
 - Adds Sonarr+Radarr to Prowlarr (Apps), FlareSolverr proxy
 - Adds qBittorrent as download client in Sonarr+Radarr
