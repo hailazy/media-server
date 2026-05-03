@@ -15,4 +15,5 @@ Self-hosted personal services orchestrated as modular podman-compose sections (m
 ## Current Focus
 - Hardening: media stack now fully self-hosted with VPN+PF, all 8 containers healthy
 - Pattern alignment: media/ refactored to match canonical AI-section structure (`data/` per section, per-section `.gitignore`, no orphan `configs/` at root)
-- Pending: qBittorrent permanent password (set via UI), Homarr widget upgrade for media tiles, optional reverse proxy for LAN access
+- Auto-provisioning: `media/scripts/provision.sh` wires Prowlarr↔arrs, qBT download client, Bazarr, root folders, qBT permanent password — idempotent, no UI needed
+- Pending: Homarr widget upgrade for media tiles, optional reverse proxy for LAN access, add indexers in Prowlarr (per-user)
