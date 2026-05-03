@@ -1,81 +1,69 @@
-# Documentation Index (Start Here)
+# Home Server — Documentation Index
 
-Purpose
-- Provide a clear, prioritized reading order and role-based navigation so you always know what to read first and what is optional.
+Self-hosted personal services orchestrated as **modular podman-compose sections**, sharing scripts and a KDE tray indicator. Each section is its own podman-compose stack with its own `.env` and `data/` directory.
 
-Priority reading order
-1) Essential Quick Reference
-   - Read: [docs/QUICK-REF.md](docs/QUICK-REF.md:1)
-   - Why: Fastest path to core commands, health checks, and verification
-   - When: First run and daily operations
+## Sections (canonical READMEs live with each section)
 
-2) Overview and Setup
-   - Read: [docs/README.md](docs/README.md:1)
-   - Why: Full system overview, structure, installation, configuration
-   - When: Initial setup or onboarding
+| Section | Purpose | Endpoint | README |
+|---------|---------|----------|--------|
+| `media/` | Jellyfin + Sonarr/Radarr/Bazarr/Prowlarr + qBittorrent + Gluetun (AirVPN) + FlareSolverr | http://localhost:8096 (Jellyfin) | (no README — see `docs/` below) |
+| `forge/` | Stable Diffusion WebUI Forge — shared image gen | http://localhost:7860 | [`forge/README.md`](../forge/README.md) |
+| `sillytavern/` | LLM chat UI with character cards, image-gen integration | http://localhost:8000 | [`sillytavern/README.md`](../sillytavern/README.md) |
+| `dashboard/` | Homarr — single pane of glass | http://localhost:7575 | [`dashboard/README.md`](../dashboard/README.md) |
 
-3) Podman Guide (details and trade-offs)
-   - Read: [docs/PODMAN.md](docs/PODMAN.md:1)
-   - Why: Rootless vs rootful, SELinux, GPU, systemd integration
-   - When: After first run or when you need deeper platform details
+Per-section READMEs cover ops, gotchas, and integration. The docs in this folder cover **cross-cutting** concerns + media-section deep-dives.
 
-4) GPU Boot Reliability (only if you use NVIDIA GPU)
-   - Read: [docs/GPU-TIMING-FIX.md](docs/GPU-TIMING-FIX.md:1)
-   - Why: Fixes rare boot-time race causing Jellyfin GPU to miss on first attempt
-   - When: If you have NVIDIA and want first-try reliability on boot
+## Cross-cutting docs
 
-5) qBittorrent Performance Tuning (optional)
-   - Read: [docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md:1)
-   - Why: Maximize throughput and stability for large libraries
-   - When: After baseline is stable and you want more performance
+1. **[QUICK-REF.md](QUICK-REF.md)** — daily-driver commands, tray, VRAM budget, common issues. **Read first.**
+2. **[README.md](README.md)** — home-server overview, architecture, requirements, install.
+3. **[PODMAN.md](PODMAN.md)** — Podman fundamentals: rootless vs rootful, SELinux, GPU CDI, systemd integration. Read after first run if you need platform depth.
+4. **[AIRVPN-VALIDATION-CHECKLIST.md](AIRVPN-VALIDATION-CHECKLIST.md)** — AirVPN + Gluetun setup, the 4 chain-bug gotchas, port forwarding wiring.
 
-6) Jellyfin Performance Tuning (optional)
-   - Read: [docs/JELLYFIN-PERFORMANCE-OPTIMIZATION.md](docs/JELLYFIN-PERFORMANCE-OPTIMIZATION.md:1)
-   - Why: Improve transcoding capacity and reduce latency
-   - When: When you need more concurrent streams or snappier UI
+## Media section deep-dives ([docs/media/](media/))
 
-7) Boot Startup Case Study (optional)
-   - Read: [docs/BOOT-STARTUP-INVESTIGATION.md](docs/BOOT-STARTUP-INVESTIGATION.md:1)
-   - Why: Real-world investigation and resolution steps for startup concerns
-   - When: Only for historical context or similar symptoms
+Hardware/performance docs specific to the media stack:
 
-8) AirVPN Validation Checklist (optional)
-   - Read: [docs/AIRVPN-VALIDATION-CHECKLIST.md](docs/AIRVPN-VALIDATION-CHECKLIST.md:1)
-   - Why: Deep validation and configuration verification
-   - When: When verifying VPN configuration end-to-end
+- **[media/JELLYFIN-PERFORMANCE-OPTIMIZATION.md](media/JELLYFIN-PERFORMANCE-OPTIMIZATION.md)** — NVENC/NVDEC tuning, codec strategy, anti-patterns (rewritten 2026-05-03).
+- **[media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md)** — qBT through Gluetun, AirVPN PF wiring, API control (rewritten 2026-05-03).
+- **[media/GPU-TIMING-FIX.md](media/GPU-TIMING-FIX.md)** — CDI auto-regen technique. Pre-migration; technique still applied via `scripts/_lib.sh`.
+- **[media/BOOT-STARTUP-INVESTIGATION.md](media/BOOT-STARTUP-INVESTIGATION.md)** — Historical case study from Oct 2025.
 
-Role-based quick paths
-- New install (10–15 minutes)
-  1. Copy envs: [core/.env.example](core/.env.example:1) → core/.env
-  2. Start: [scripts/podman-up.sh](scripts/podman-up.sh:1)
-  3. Health: [maintenance/maintenance.sh](maintenance/maintenance.sh:1) health
-  4. Verify VPN: podman-compose -f [core/podman-compose.yml](core/podman-compose.yml:1) exec gluetun wget -qO- https://ipinfo.io
-  5. Reference: [docs/QUICK-REF.md](docs/QUICK-REF.md:1)
+## Shared infrastructure
 
-- Daily operations (2 minutes)
-  - Health: [maintenance/maintenance.sh](maintenance/maintenance.sh:1) health
-  - Logs: [scripts/podman-logs.sh](scripts/podman-logs.sh:1)
-  - VPN check: podman-compose -f [core/podman-compose.yml](core/podman-compose.yml:1) exec gluetun wget -qO- https://ipinfo.io
+- **`scripts/`** — section ops + tray:
+  - `up.sh <section>` / `down.sh <section>` / `logs.sh <section>` — section lifecycle
+  - `category.sh {ai|media|all} {toggle|up|down|status}` — multi-section ops (used by tray)
+  - `tray.py` — KDE Plasma tray indicator (autostart via `~/.config/autostart/home-server-tray.desktop`)
+  - `vram-guard.sh` — VRAM budgeting between Forge and Jellyfin (16GB ceiling on RTX 4070 Ti SUPER)
+  - `dashboard-backup.sh` / `dashboard-restore.sh` — Homarr SQLite snapshot
+  - `_lib.sh` — shared logging, GPU CDI auto-regen, network helpers
+- **`AGENTS.md`** + **`.claude/CLAUDE.md`** — AI-agent operating instructions for this repo.
 
-- Troubleshooting (triage first)
-  1. Quick triage: [maintenance/quick-debug.sh](maintenance/quick-debug.sh:1)
-  2. Service logs: [scripts/podman-logs.sh](scripts/podman-logs.sh:1)
-  3. Targeted checks: [docs/QUICK-REF.md](docs/QUICK-REF.md:1) Troubleshooting section
-  4. GPU boot behavior (if NVIDIA): [docs/GPU-TIMING-FIX.md](docs/GPU-TIMING-FIX.md:1)
+## Role-based quick paths
 
-- Advanced tuning (optional)
-  - qBittorrent: [docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md:1)
-  - Jellyfin: [docs/JELLYFIN-PERFORMANCE-OPTIMIZATION.md](docs/JELLYFIN-PERFORMANCE-OPTIMIZATION.md:1)
-  - Podman trade-offs, SELinux, systemd: [docs/PODMAN.md](docs/PODMAN.md:1)
+**New install (10-15 min)**
+1. `cp <section>/.env.example <section>/.env` for each section you want
+2. `./scripts/up.sh <section>` (or `all`)
+3. `./scripts/up.sh dashboard` → http://localhost:7575 → onboarding
+4. KDE tray autostart: `cp scripts/launcher.sh ~/.local/bin/` (already configured if migrated)
 
-Minimal command cheat sheet
-- Start: [scripts/podman-up.sh](scripts/podman-up.sh:1)
-- Stop: [scripts/podman-down.sh](scripts/podman-down.sh:1)
-- Logs: [scripts/podman-logs.sh](scripts/podman-logs.sh:1)
-- Health: [maintenance/maintenance.sh](maintenance/maintenance.sh:1) health
-- Compose status: podman-compose -f [core/podman-compose.yml](core/podman-compose.yml:1) ps
-- VPN IP: podman-compose -f [core/podman-compose.yml](core/podman-compose.yml:1) exec gluetun wget -qO- https://ipinfo.io
+**Daily ops**
+- Tray icon shows section state (🟢 all up · 🟡 partial · ⚫ down). Right-click → start/stop categories.
+- Logs: `./scripts/logs.sh <section> -f`
 
-Notes
-- Start with 1 → 2 → 3 for a strong baseline. Items 4–8 are situational or advanced.
-- All commands assume execution from repository root unless noted otherwise.
+**Troubleshooting**
+1. Quick triage: `./scripts/logs.sh <section>` last 50 lines
+2. VPN check (media): `podman exec gluetun wget -qO- https://ipinfo.io`
+3. Targeted: `media/maintenance/quick-debug.sh` for media-stack-specific
+4. Path issues from re-creating `.env`: see `AIRVPN-VALIDATION-CHECKLIST.md`
+
+**Advanced tuning** (see media deep-dives)
+
+## Conventions
+
+- All commands run from repo root unless noted.
+- `<section>/.env` is gitignored; `<section>/.env.example` is the template.
+- Container state lives in `<section>/data/` (also gitignored).
+- AI sections (forge, sillytavern, dashboard) share `home-net` Podman network for cross-container DNS (`http://home-forge:7860`, etc.).
+- Media stack runs on its own network (default project network); dashboard reaches it via `host.containers.internal`.

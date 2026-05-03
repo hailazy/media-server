@@ -1,498 +1,274 @@
-# AirVPN Configuration Validation & Testing Plan
-Start here: [docs/INDEX.md](docs/INDEX.md:1)
-Reading order: 8/8 • Optional (Validation/Deep dive)
+# AirVPN + Gluetun Validation Checklist
 
-## ⚠️ CRITICAL ISSUES IDENTIFIED
+> **For:** verifying media stack VPN setup after first install or after re-creating `media/.env`.
+> **Source of truth:** `media/compose.yml` gluetun service + `media/.env`.
+> **Last revised:** 2026-05-03 (post chain-bug fix in commit `0238a98`).
 
-### 🚨 **BLOCKER ISSUES - MUST FIX BEFORE STARTING**
-
-#### 1. **Environment Variable Configuration (CRITICAL)**
-- **Problem**: Current [core/.env](core/.env:1) may not have AirVPN credentials properly configured
-- **Impact**: VPN will fail to connect, entire stack will be non-functional
-- **Fix Required**: Update `.env` file with AirVPN credentials from `.env.example`
-
-#### 2. **Hard-coded Placeholder Values (CRITICAL)**
-- **Problem**: [core/podman-compose.yml](core/podman-compose.yml:1) contains literal placeholder text:
-  ```yaml
-  - WIREGUARD_PRIVATE_KEY=YOUR_PRIVATE_KEY_HERE
-  - WIREGUARD_ADDRESSES=YOUR_VPN_IP_ADDRESS_HERE
-  ```
-- **Impact**: Gluetun will fail to start with invalid credentials
-- **Fix Required**: Replace with environment variable references
-
-#### 3. **Missing Environment Variable Integration (CRITICAL)**
-- **Problem**: [core/podman-compose.yml](core/podman-compose.yml:1) doesn't use environment variables from `.env` file
-- **Impact**: Configuration changes require editing YAML instead of just `.env`
-- **Fix Required**: Implement `${VARIABLE}` substitution pattern
+The 4 chain-bug section below is the failure mode that motivated this rewrite — **read it first** if your gluetun container is restart-looping.
 
 ---
 
-## 📋 PRE-FLIGHT VALIDATION CHECKLIST
+## ⚠️ The 4 chain bugs (read first)
 
-### Phase 1: Configuration File Validation
+Every gluetun start failure I've seen on this stack is one of these four. They surface one at a time on each retry, so fixing one reveals the next.
 
-#### ✅ **YAML Syntax** *(PASSED)*
-- [x] [core/podman-compose.yml](core/podman-compose.yml:1) has valid YAML syntax
-- [x] All service definitions are properly structured
-- [x] No syntax errors detected
+### 1. `WIREGUARD_PRESHARED_KEY` is mandatory for AirVPN
 
-#### ❌ **Environment Variable Consistency** *(FAILED)*
-- [ ] **CRITICAL**: `.env` file must use AirVPN variables
-- [ ] **CRITICAL**: `podman-compose.yml` uses environment variable references instead of hard-coded values
-- [ ] All required AirVPN variables are defined in `.env`
-- [ ] No orphaned VPN variables remain in configuration
+Symptom: `ERROR VPN settings: Wireguard settings: pre-shared key is not set`
 
-#### ❌ **AirVPN Configuration Completeness** *(FAILED)*
-Required variables missing or incorrect:
-- [ ] `AIRVPN_WIREGUARD_PRIVATE_KEY` - Currently missing from `.env`
-- [ ] `AIRVPN_WIREGUARD_ADDRESSES` - Currently missing from `.env`
-- [ ] `AIRVPN_SERVER_COUNTRIES` - Currently missing from `.env`
-- [ ] `AIRVPN_PORT_FORWARDING` - Currently missing from `.env`
+AirVPN's WireGuard configs **always** include a PSK in the `[Peer]` section. Older guides claim AirVPN doesn't use PSKs — that's wrong. Gluetun rejects empty PSKs with the same error as missing.
 
-#### ✅ **Service Dependencies** *(PASSED)*
-- [x] `qbittorrent` properly depends on `gluetun` with health condition in [core/podman-compose.yml](core/podman-compose.yml:1)
-- [x] `sonarr` and `radarr` depend on `prowlarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
-- [x] `bazarr` depends on both `sonarr` and `radarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
-- [x] `jellyfin` depends on `sonarr` and `radarr` in [core/podman-compose.yml](core/podman-compose.yml:1)
+Fix:
+1. Open your AirVPN WireGuard config file (e.g., `~/Downloads/AirVPN_Singapore_UDP-1637-Entry3.conf`)
+2. Copy the `PresharedKey = ...` value from the `[Peer]` section
+3. Set `AIRVPN_WIREGUARD_PRESHARED_KEY=<value>` in `media/.env`
+4. Confirm `compose.yml` has `- WIREGUARD_PRESHARED_KEY=${AIRVPN_WIREGUARD_PRESHARED_KEY}` in gluetun env
 
-#### ⚠️ **Port & Network Configuration** *(NEEDS REVIEW)*
-- [x] [`gluetun`](core/podman-compose.yml:1) exposes port `8080:8080`
-- [x] [`qbittorrent`](core/podman-compose.yml:1) uses `network_mode: "container:gluetun"`
-- [x] [`FIREWALL_INPUT_PORTS=8080`](core/podman-compose.yml:1) configured
-- [x] [`VPN_PORT_FORWARDING=on`](core/podman-compose.yml:1) enabled
-- [ ] **REVIEW NEEDED**: Static port 8080 may conflict with AirVPN's dynamic port forwarding
+### 2. `AIRVPN_SERVER_COUNTRIES` uses full names, not ISO codes
+
+Symptom: `ERROR VPN settings: ... country specified is not valid: ... none of sg is one of the choices available Austria, Belgium, ..., Singapore, ...`
+
+Gluetun's AirVPN provider expects full country names. ISO codes (`SG`, `JP`) are rejected.
+
+Valid values (current list as of 2026-05): Austria, Belgium, Brazil, Bulgaria, Canada, Czech Republic, Estonia, Germany, Ireland, Japan, Latvia, Netherlands, New Zealand, Norway, Romania, Serbia, Singapore, Spain, Sweden, Switzerland, Taiwan, United Kingdom, United States.
+
+Fix: `AIRVPN_SERVER_COUNTRIES=Singapore` (NOT `SG`). Multiple = comma-separated: `Singapore,Japan,Taiwan`.
+
+### 3. `AIRVPN_PORT_FORWARDING` must be `false` for AirVPN
+
+Symptom: `ERROR VPN settings: provider settings: port forwarding: port forwarding cannot be enabled: value is not one of the possible choices: airvpn must be one of perfect privacy, private internet access, privatevpn or protonvpn`
+
+Gluetun's `VPN_PORT_FORWARDING=on` only works for providers gluetun can auto-request ports from: Perfect Privacy, PIA, PrivateVPN, ProtonVPN. AirVPN does PF differently — you allocate the port via airvpn.org client area, then open it in the gluetun firewall (see §3 below).
+
+Fix: `AIRVPN_PORT_FORWARDING=false`. PF still works; gluetun just doesn't auto-request.
+
+### 4. Hardcoded paths in compose.yml override `.env`
+
+Not a gluetun error per se, but a frequent companion bug. Symptom: containers start, mount fails (`/media/Storage/tv-shows: No such file or directory`).
+
+The first version of `compose.yml` had hardcoded `/media/Storage/...` paths instead of `${TV_PATH}` etc. from `.env`. This was fixed in commit `0238a98`. If you see hardcoded paths reappear (e.g., from a merge), restore env-var refs.
 
 ---
 
-## 🔧 REQUIRED FIXES
+## Pre-flight checklist
 
-### Fix 1: Update Environment Configuration
+Run these before `./scripts/up.sh media` for the first time or after editing `.env`.
 
-**Create new `.env` file based on `.env.example`:**
+### `media/.env` is complete
 
 ```bash
-# Backup current configuration
-cp core/.env core/.env.backup
-
-# Copy AirVPN template
-cp core/.env.example core/.env
-
-# Edit with your actual AirVPN credentials
-nano core/.env
+grep -E '^AIRVPN_(WIREGUARD_(PRIVATE|PRESHARED|ADDRESSES)|SERVER|PORT|FORWARDED)' media/.env
 ```
 
-**Required updates in `.env`:**
+Expected (with values, not these placeholders):
+```
+AIRVPN_WIREGUARD_PRIVATE_KEY=<base64, 44 chars + =>
+AIRVPN_WIREGUARD_ADDRESSES=<IPv4>/32,<IPv6>/128
+AIRVPN_WIREGUARD_PRESHARED_KEY=<base64, 44 chars + =>
+AIRVPN_SERVER_COUNTRIES=Singapore
+AIRVPN_PORT_FORWARDING=false
+AIRVPN_FORWARDED_PORT=<port from airvpn.org/ports>
+```
+
+### Validate key formats
+
 ```bash
-# Replace these with your actual AirVPN values
-AIRVPN_WIREGUARD_PRIVATE_KEY=your_actual_private_key_here
-AIRVPN_WIREGUARD_ADDRESSES=your_actual_addresses_here
-AIRVPN_SERVER_COUNTRIES=SG,HK,JP
-AIRVPN_PORT_FORWARDING=true
+# Source the env to access vars in shell
+set -a; source media/.env; set +a
 
-# Update credentials
-QBIT_USER=your_username
-QBIT_PASS=your_secure_password
+# WireGuard private key: 44-char base64 ending with =
+[[ ${#AIRVPN_WIREGUARD_PRIVATE_KEY} -eq 44 ]] && echo "✓ private key length" || echo "✗ private key length"
 
-# Keep existing working values
-TZ=Asia/Ho_Chi_Minh
-PUID=1000
-PGID=1000
-MEDIA_ROOT=/media/Storage
+# Preshared key: same shape
+[[ ${#AIRVPN_WIREGUARD_PRESHARED_KEY} -eq 44 ]] && echo "✓ PSK length" || echo "✗ PSK length"
+
+# Addresses: IPv4 + IPv6
+echo "$AIRVPN_WIREGUARD_ADDRESSES" | grep -qE '^[0-9.]+/32,[0-9a-f:]+/128$' && echo "✓ addresses format" || echo "✗ addresses format"
 ```
 
-### Fix 2: Update podman-compose.yml for Environment Variable Integration
+### Compose env references match
 
-**Replace hard-coded values in [gluetun](core/podman-compose.yml:1) service:**
+```bash
+grep -E '\$\{AIRVPN_' media/compose.yml
+```
 
+Should reference each var defined in `.env`. If `.env` defines `AIRVPN_FOO=` but `compose.yml` references `${AIRVPN_BAR}`, the shell expands to empty — gluetun then sees an empty value and may fail validation (case-by-case).
+
+---
+
+## Port forwarding setup (3 steps, all must align)
+
+AirVPN PF is manual — gluetun won't do it for you. The three things below must all match the same port number.
+
+### Step 1: Allocate port at AirVPN
+
+1. Login at airvpn.org
+2. Client Area → **Forwarded Ports**
+3. Click **Add** — pick a port (random or specific). Stays per-account, doesn't reset on reconnect.
+4. Note the assigned port (e.g., `54273`).
+
+### Step 2: Open the port in gluetun firewall
+
+In `media/.env`:
+```env
+AIRVPN_FORWARDED_PORT=54273
+```
+
+In `media/compose.yml` gluetun env (already set):
 ```yaml
-environment:
-  # Replace hard-coded values with environment variables
-  - WIREGUARD_PRIVATE_KEY=${AIRVPN_WIREGUARD_PRIVATE_KEY}
-  - WIREGUARD_ADDRESSES=${AIRVPN_WIREGUARD_ADDRESSES}
-  - SERVER_COUNTRIES=${AIRVPN_SERVER_COUNTRIES:-SG}
-  - VPN_PORT_FORWARDING=${AIRVPN_PORT_FORWARDING:-on}
-  
-  # Keep existing configuration
-  - VPN_SERVICE_PROVIDER=airvpn
-  - VPN_TYPE=wireguard
-  - FIREWALL=on
-  - FIREWALL_INPUT_PORTS=8080
-  - LOG_LEVEL=${DEBUG:+debug}${DEBUG:-info}
+- FIREWALL_VPN_INPUT_PORTS=${AIRVPN_FORWARDED_PORT}
 ```
 
----
-
-## 🧪 COMPREHENSIVE TESTING PLAN
-
-### Phase 1: Pre-Start Validation
-
-#### Step 1.1: Validate Configuration Files
+This opens the port on `tun0` (the WireGuard interface). Verify after start:
 ```bash
-# Verify YAML syntax
-python3 -c "import yaml; yaml.safe_load(open('core/podman-compose.yml')); print('✅ YAML valid')"
-
-# Check for placeholder values
-grep -n "YOUR_.*_HERE" core/podman-compose.yml
-# Should return no results after fixes
-
-# Verify environment variables exist
-grep -E "^AIRVPN_" core/.env
-# Should show all required AirVPN variables
+podman logs gluetun | grep "allowed input port"
+# Expected:
+#   ... setting allowed input port 8080 through interface eth0...   ← Web UI from LAN
+#   ... setting allowed input port 54273 through interface tun0...  ← BitTorrent peers via VPN
 ```
 
-#### Step 1.2: Validate AirVPN Credentials
+> Note: `FIREWALL_INPUT_PORTS=8080` (eth0, LAN) is different from `FIREWALL_VPN_INPUT_PORTS` (tun0, VPN). Putting the BitTorrent port in the wrong one = silently broken.
+
+### Step 3: Set qBittorrent listening port
+
 ```bash
-# Test WireGuard private key format (should be 44 characters base64)
-echo $AIRVPN_WIREGUARD_PRIVATE_KEY | wc -c
-# Should output: 45 (44 chars + newline)
+PORT=54273
+USER=admin
+PASS=$(podman logs qbittorrent 2>&1 | grep -oP "temporary password is provided for this session: \K\S+")
 
-# Test address format (should contain both IPv4 and IPv6)
-echo $AIRVPN_WIREGUARD_ADDRESSES | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+,"
-# Should match IPv4 format
-```
+COOKIE=$(curl -si --data-urlencode "username=$USER" --data-urlencode "password=$PASS" \
+  http://localhost:8080/api/v2/auth/login | sed -n 's/.*SID=\([^;]*\);.*/\1/p')
 
-#### Step 1.3: Validate File Permissions
-```bash
-# Check media directory permissions
-ls -la /media/Storage/
-# Should show proper ownership (PUID:PGID)
-
-# Check config directory (from repository root)
-mkdir -p configs && ls -la configs/
-# Should be writable by containers
-```
-> Note: All commands assume execution from the repository root.
-
-### Phase 2: VPN Connection Testing
-
-#### Step 2.1: Start VPN Container Only
-```bash
-# Start only gluetun for initial testing (from repo root)
-podman-compose -f core/podman-compose.yml up -d gluetun
-
-# Monitor startup logs
-podman-compose -f core/podman-compose.yml logs -f gluetun
-```
-
-**Expected Success Indicators:**
-- ✅ `WireGuard configuration loaded successfully`
-- ✅ `Connected to AirVPN server`
-- ✅ `Public IP: [AirVPN IP address]`
-- ✅ `Port forwarding enabled on port: [dynamic_port]`
-
-**Failure Indicators:**
-- ❌ `Authentication failed`
-- ❌ `Invalid private key`
-- ❌ `Connection timeout`
-- ❌ `DNS resolution failed`
-
-#### Step 2.2: Test VPN Connectivity
-```bash
-# Test from within gluetun container
-podman-compose -f core/podman-compose.yml exec gluetun curl -s ipinfo.io
-# Should show AirVPN server IP, not your real IP
-
-# Test port forwarding status
-podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded
-# Should return the forwarded port number
-```
-
-#### Step 2.3: Test DNS Resolution
-```bash
-# Test DNS resolution through VPN
-podman-compose -f core/podman-compose.yml exec gluetun nslookup google.com
-# Should resolve successfully
-
-# Test blocked sites (if geo-blocking test is relevant)
-podman-compose -f core/podman-compose.yml exec gluetun curl -I https://www.netflix.com
-# Should connect (response may vary by region)
-```
-
-### Phase 3: qBittorrent Integration Testing
-
-#### Step 3.1: Start qBittorrent
-```bash
-# Start qBittorrent (depends on gluetun)
-podman-compose -f core/podman-compose.yml up -d qbittorrent
-
-# Check dependency satisfaction
-podman-compose -f core/podman-compose.yml logs qbittorrent
-```
-
-#### Step 3.2: Test Network Isolation
-```bash
-# Verify qBittorrent uses VPN IP
-podman exec qbittorrent curl -s ipinfo.io
-# Should show same IP as gluetun container
-
-# Test that qBittorrent can't access internet without VPN
-podman stop gluetun
-podman exec qbittorrent curl -s --connect-timeout 5 ipinfo.io
-# Should fail/timeout (proving network isolation)
-
-# Restart gluetun
-podman-compose -f core/podman-compose.yml up -d gluetun
-```
-
-#### Step 3.3: Test qBittorrent Web Interface
-```bash
-# Wait for qBittorrent to be ready
-sleep 30
-
-# Test web interface accessibility
-curl -I http://localhost:8080
-# Should return HTTP 200 or redirect
-
-# Test with credentials
-curl -c cookies.txt -d "username=${QBIT_USER}&password=${QBIT_PASS}" \
-  http://localhost:8080/api/v2/auth/login
-# Should return "Ok."
-```
-
-### Phase 4: Port Forwarding Validation
-
-#### Step 4.1: Verify Dynamic Port Assignment
-```bash
-# Get the assigned port from gluetun
-FORWARDED_PORT=$(podman-compose -f core/podman-compose.yml exec gluetun cat /tmp/gluetun/forwarded_port)
-echo "Forwarded port: $FORWARDED_PORT"
-
-# Verify port is open
-podman-compose -f core/podman-compose.yml exec gluetun nc -zv localhost $FORWARDED_PORT
-# Should connect successfully
-```
-
-#### Step 4.2: Update qBittorrent Port Configuration
-```bash
-# Update qBittorrent to use the forwarded port
-curl -X POST -b cookies.txt \
-  -d "json={\"listen_port\":$FORWARDED_PORT}" \
+curl -s -b "SID=$COOKIE" \
+  --data-urlencode "json={\"listen_port\":$PORT,\"upnp\":false,\"random_port\":false}" \
   http://localhost:8080/api/v2/app/setPreferences
 
-# Verify the change
-curl -b cookies.txt http://localhost:8080/api/v2/app/preferences | \
-  grep -o '"listen_port":[0-9]*'
+# Verify
+curl -s -b "SID=$COOKIE" http://localhost:8080/api/v2/app/preferences | \
+  python3 -c 'import sys,json; p=json.load(sys.stdin); print(f"listen_port={p[\"listen_port\"]} upnp={p[\"upnp\"]} random_port={p[\"random_port\"]}")'
 ```
 
-### Phase 5: Full Stack Testing
-
-#### Step 5.1: Start All Services
-```bash
-# Start complete stack
-podman-compose -f core/podman-compose.yml up -d
-
-# Verify all services are healthy
-podman-compose -f core/podman-compose.yml ps
-# All services should show "Up" status
-```
-
-#### Step 5.2: Test Service Accessibility
-```bash
-# Test all web interfaces
-curl -I http://localhost:9696  # Prowlarr
-curl -I http://localhost:8989  # Sonarr
-curl -I http://localhost:7878  # Radarr
-curl -I http://localhost:6767  # Bazarr
-curl -I http://localhost:8080  # qBittorrent (via VPN)
-curl -I http://localhost:8096  # Jellyfin
-```
-
-#### Step 5.3: Test End-to-End Functionality
-```bash
-# Add a test indexer in Prowlarr (manual step)
-# Configure Sonarr/Radarr to use Prowlarr (manual step)
-# Test a download (manual step)
-# Verify files appear in media directories (manual step)
-```
+`upnp` and `random_port` must be false — UPnP makes no sense behind a VPN, and random_port breaks the chain on every restart.
 
 ---
 
-## 🚨 TROUBLESHOOTING GUIDE
+## Verify end-to-end
 
-### Common AirVPN Issues
+After `./scripts/up.sh media`:
 
-#### Issue: "Authentication failed"
-**Diagnosis:**
+### 1. All 8 containers healthy
+
 ```bash
-# Check credential format
-echo "Private key length: $(echo $AIRVPN_WIREGUARD_PRIVATE_KEY | wc -c)"
-echo "Addresses format: $AIRVPN_WIREGUARD_ADDRESSES"
-```
-**Solutions:**
-- Regenerate WireGuard config from AirVPN client area
-- Verify copy/paste didn't introduce extra characters
-- Check account status at https://airvpn.org/
-
-#### Issue: "Connection timeout"
-**Diagnosis:**
-```bash
-# Test connectivity to AirVPN servers
-ping -c 3 singapore.airdns.org
-curl -I https://airvpn.org/status/
-```
-**Solutions:**
-- Try different server countries: `AIRVPN_SERVER_COUNTRIES=HK,JP,KR`
-- Check firewall rules blocking WireGuard (UDP 51820)
-- Verify network connectivity
-
-#### Issue: "Port forwarding not working"
-**Diagnosis:**
-```bash
-# Check if port forwarding is enabled in AirVPN account
-podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded
-# Should return a port number, not error
-```
-**Solutions:**
-- Enable port forwarding in AirVPN client area
-- Verify `AIRVPN_PORT_FORWARDING=true` in `.env`
-- Check gluetun logs for port forwarding messages
-
-#### Issue: "qBittorrent can't connect"
-**Diagnosis:**
-```bash
-# Test network isolation
-podman exec qbittorrent ip route
-# Should show routes through gluetun
-
-# Test VPN IP
-podman exec qbittorrent curl -s ipinfo.io
-# Should match gluetun IP
+podman ps --format "{{.Names}}: {{.Status}}" \
+  | grep -E "flaresolverr|prowlarr|sonarr|radarr|bazarr|gluetun|qbittorrent|jellyfin"
 ```
 
-### Container-Specific Issues
+Expected: all show `(healthy)`. Cold-start order: gluetun → qbittorrent (depends on gluetun health) → bazarr/jellyfin. Total time ~60-90s.
 
-#### Gluetun Fails to Start
+### 2. VPN tunnel is AirVPN, not your home WAN
+
 ```bash
-# Check capabilities and devices
-podman inspect gluetun | grep -A 5 -B 5 "CapAdd\|Devices"
-
-# Check SELinux context
-ls -Z /dev/net/tun
-# Should show proper labeling
+podman exec gluetun wget -qO- https://ipinfo.io
 ```
 
-#### qBittorrent Web Interface Inaccessible
-```bash
-# Check if container is running
-podman ps | grep qbittorrent
-
-# Check port binding
-podman port qbittorrent
-# Note: No direct ports due to network_mode=container:gluetun
-
-# Test through gluetun
-podman-compose -f core/podman-compose.yml exec gluetun curl -I localhost:8080
+Expected:
+```json
+{
+  "ip": "146.70.67.50",
+  "country": "SG",
+  "org": "AS9009 M247 Europe SRL",     ← AirVPN's upstream
+  ...
+}
 ```
 
-### Documentation References
+If the IP matches your home WAN, qBittorrent is leaking. Check that qbittorrent has `network_mode: "container:gluetun"` in compose.yml.
 
-- **Main Documentation:** [docs/README.md](docs/README.md:1)
-- **Podman Guide:** [docs/PODMAN.md](docs/PODMAN.md:1)  
-- **Quick Reference:** [docs/QUICK-REF.md](docs/QUICK-REF.md:1)
-- **GPU Optimization:** [docs/GPU-TIMING-FIX.md](docs/GPU-TIMING-FIX.md:1)
-- **qBittorrent Performance:** [docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](docs/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md:1)
+### 3. PF is open from outside
 
-#### 3. VPN Connection Issues
+Two ways:
 
-**Diagnosis:**
+**AirVPN's portchecker** (canonical):
+- airvpn.org → Client Area → Forwarded Ports
+- Click **Test open** next to your port
+- Expected: TCP IPv4 = **Open!**, TCP IPv6 = **Open!**, UDP shows no badge (UDP has no clean handshake — normal).
+
+**qBittorrent connection_status:**
 ```bash
-# Check Gluetun logs
-podman-compose -f core/podman-compose.yml logs gluetun
-
-# Test VPN connectivity
-podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
-
-# Verify VPN credentials
-grep -E "(AIRVPN_|WIREGUARD_)" core/.env
+curl -s -b "SID=$COOKIE" http://localhost:8080/api/v2/transfer/info \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["connection_status"])'
 ```
+Cold start: `firewalled` (normal). After ~30s with active torrents: `connected`.
+
+### 4. Kill-switch works
+
+```bash
+podman stop gluetun
+podman exec qbittorrent curl -s --connect-timeout 5 https://ipinfo.io
+# Expected: timeout / connection refused (qBT can't reach internet without gluetun)
+podman start gluetun
+```
+
+This proves `network_mode: "container:gluetun"` is enforcing isolation. If qBT *can* reach internet without gluetun, you have a leak.
 
 ---
 
-## 📊 VALIDATION COMMANDS SUMMARY
+## Troubleshooting
 
-### Quick Health Check Script
+### `WIREGUARD_PRIVATE_KEY` rejected as invalid
+
 ```bash
-#!/bin/bash
-# Save as: validate-airvpn.sh
+echo -n "$AIRVPN_WIREGUARD_PRIVATE_KEY" | wc -c   # must be 44
+echo "$AIRVPN_WIREGUARD_PRIVATE_KEY" | base64 -d | wc -c   # must be 32
+```
+If wrong: regenerate config from airvpn.org Config Generator. Don't transcribe by hand — copy from the `.conf` file.
 
-echo "=== AirVPN Configuration Validation ==="
+### Connection times out (no error from gluetun)
 
-# 1. Check environment variables
-echo "1. Checking environment variables..."
-if [ -z "$AIRVPN_WIREGUARD_PRIVATE_KEY" ]; then
-    echo "❌ AIRVPN_WIREGUARD_PRIVATE_KEY not set"
-else
-    echo "✅ AIRVPN_WIREGUARD_PRIVATE_KEY configured"
-fi
+```bash
+# AirVPN status page
+curl -s https://airvpn.org/status/ | head -50
 
-# 2. Check containers
-echo "2. Checking container status..."
-podman-compose -f core/podman-compose.yml ps
-
-# 3. Check VPN connection
-echo "3. Checking VPN connection..."
-VPN_IP=$(podman-compose -f core/podman-compose.yml exec gluetun curl -s ipinfo.io/ip 2>/dev/null)
-if [ $? -eq 0 ]; then
-    echo "✅ VPN connected: $VPN_IP"
-else
-    echo "❌ VPN connection failed"
-fi
-
-# 4. Check port forwarding
-echo "4. Checking port forwarding..."
-FORWARDED_PORT=$(podman-compose -f core/podman-compose.yml exec gluetun curl -s localhost:9999/portforwarded 2>/dev/null)
-if [ $? -eq 0 ] && [ "$FORWARDED_PORT" != "0" ]; then
-    echo "✅ Port forwarding active: $FORWARDED_PORT"
-else
-    echo "❌ Port forwarding not working"
-fi
-
-# 5. Check qBittorrent
-echo "5. Checking qBittorrent..."
-QB_STATUS=$(curl -s -I http://localhost:8080 | head -n1)
-if echo "$QB_STATUS" | grep -q "200\|302"; then
-    echo "✅ qBittorrent accessible"
-else
-    echo "❌ qBittorrent not accessible"
-fi
-
-echo "=== Validation Complete ==="
+# Test UDP connectivity (WireGuard uses UDP, not TCP)
+podman exec gluetun nc -u -z -v sg3.vpn.airdns.org 1637 2>&1 | tail -5
 ```
 
-### Emergency Rollback
+ISP UDP throttling is rare but possible. Try a different country: `AIRVPN_SERVER_COUNTRIES=Japan,Taiwan`.
+
+### qBittorrent webUI shows "firewalled" indefinitely
+
+The chain (AirVPN port → `FIREWALL_VPN_INPUT_PORTS` → qBT listen port) has a mismatch.
+
 ```bash
-# If configuration fails, restore from backup
-cp core/.env.backup core/.env
-podman-compose -f core/podman-compose.yml down
-podman-compose -f core/podman-compose.yml up -d
+# Confirm gluetun opened the port on tun0 (not eth0)
+podman logs gluetun | grep "input port .* tun0"
+
+# Confirm qBT is listening
+podman exec qbittorrent ss -tlnp 2>/dev/null | grep $AIRVPN_FORWARDED_PORT \
+  || podman exec gluetun netstat -ln | grep $AIRVPN_FORWARDED_PORT
+
+# Confirm qBT prefs match
+curl -s -b "SID=$COOKIE" http://localhost:8080/api/v2/app/preferences \
+  | python3 -c 'import sys,json; p=json.load(sys.stdin); print(p["listen_port"])'
 ```
+
+If all three match and AirVPN portchecker still shows Closed: try removing + re-adding the port at airvpn.org.
+
+### Gluetun env changes don't take effect
+
+`podman restart gluetun` does NOT re-read `.env`. Env vars are baked at container creation. To apply changes:
+
+```bash
+./scripts/down.sh media && ./scripts/up.sh media
+```
+
+This recreates the container with new env values.
 
 ---
 
-## 📋 FINAL CHECKLIST
+## See also
 
-Before declaring the migration successful, verify:
-
-- [ ] **Configuration**: All placeholder values replaced with actual credentials
-- [ ] **VPN Connection**: Gluetun successfully connects to AirVPN
-- [ ] **IP Verification**: Public IP shows AirVPN server, not real IP
-- [ ] **Port Forwarding**: Dynamic port assigned and accessible
-- [ ] **qBittorrent**: Web interface accessible and using VPN IP
-- [ ] **Network Isolation**: qBittorrent fails when VPN is down
-- [ ] **Media Services**: All *arr services start and are accessible
-- [ ] **Download Test**: Can successfully download a test torrent
-- [ ] **File Management**: Downloaded files appear in correct directories
-- [ ] **Performance**: Download speeds are acceptable through VPN
-
-## 🎯 SUCCESS CRITERIA
-
-The migration is successful when:
-
-1. ✅ All containers start without errors
-2. ✅ qBittorrent shows AirVPN IP address
-3. ✅ Port forwarding is working (check in qBittorrent status)
-4. ✅ Test download completes successfully
-5. ✅ All web interfaces are accessible
-6. ✅ No network leaks when VPN restarts
-
-**Estimated Setup Time**: 30-60 minutes (depending on troubleshooting needs)
+- [QUICK-REF.md](QUICK-REF.md) — daily commands
+- [media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md) — qBT API control, network architecture
+- `media/.env.example` — annotated env template (in-file docs explain each var)
+- AirVPN docs — https://airvpn.org/faq/
+- Gluetun docs (AirVPN) — https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/airvpn.md

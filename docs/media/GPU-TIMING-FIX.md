@@ -1,6 +1,6 @@
 # NVIDIA GPU Timing Race Condition Fix
-[Start here: docs/INDEX.md:1](docs/INDEX.md:1)
-Reading order: 4/8 • Optional (NVIDIA only)
+
+> **Pre-migration deep-dive (media-server era).** Technique still valid: the CDI auto-regen pattern lives in `scripts/_lib.sh:check_nvidia_cdi_configuration`, called by `scripts/up.sh` for any GPU-using section (media + forge). Path references below (`core/`, `services/`, `podman-up.sh`) are stale — equivalents are now `media/`, `media/data/`, `scripts/up.sh`. See `../INDEX.md` for current architecture.
 
 ## Table of Contents
 - [Problem Description](#problem-description)

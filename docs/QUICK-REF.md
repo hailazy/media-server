@@ -1,330 +1,207 @@
-# Media Stack Quick Reference
-Start here: [docs/INDEX.md](docs/INDEX.md:1)
-Reading order: 1/8 • Essential
+# Home Server Quick Reference
 
-**🎯 RAPID CONTEXT**: Podman-based media automation stack with VPN protection, automated downloads, and media streaming. All traffic routed through AirVPN with static WireGuard configuration.
+Daily-driver command card. Start here for any task.
 
-## 📖 Project Overview
-
-**What it does**: Complete automated media pipeline from search → download → organize → stream, all through secure VPN tunnel.
-
-**Core Tech Stack**: Podman containers + AirVPN (WireGuard) + qBittorrent + Sonarr/Radarr + Jellyfin + static port forwarding.
-
-**Key Innovation**: Static AirVPN WireGuard configuration from Config Generator, eliminating dynamic config generation complexity.
+> **Full overview:** [README.md](README.md) · **Doc map:** [INDEX.md](INDEX.md)
 
 ---
 
-## 🎯 Critical File Priority (READ FIRST)
+## Essential commands
 
-### **🔥 ESSENTIAL** (Start here for any issue)
-1. **[core/podman-compose.yml](core/podman-compose.yml:1)** - Main service definitions, dependencies, networking
-2. **[core/.env](core/.env:1)** / **[core/.env.example](core/.env.example:1)** - All configuration variables (AirVPN creds, ports, paths)
-3. **[maintenance/maintenance.sh](maintenance/maintenance.sh:1)** - Comprehensive debugging tool (`./maintenance/maintenance.sh health`)
+```bash
+# Section lifecycle (run from repo root)
+./scripts/up.sh    {media|forge|sillytavern|dashboard|all}
+./scripts/down.sh  <section>
+./scripts/logs.sh  <section> -f [service...]    # follow logs
 
-### **🔧 OPERATIONAL** (Daily use)
-4. **[scripts/podman-up.sh](scripts/podman-up.sh:1)** - Stack startup script
-5. **[maintenance/quick-debug.sh](maintenance/quick-debug.sh:1)** - Fast troubleshooting
-6. **[scripts/podman-logs.sh](scripts/podman-logs.sh:1)** - Log viewing utility
+# Multi-section (used by tray)
+./scripts/category.sh {ai|media|all} {toggle|up|down|status}
 
-### **📚 CONTEXTUAL** (Reference when needed)
-7. **[docs/README.md](docs/README.md:1)** - Complete documentation (996 lines)
-8. **[docs/PODMAN.md](docs/PODMAN.md:1)** - Podman-specific setup guide
-9. **[docs/AIRVPN-VALIDATION-CHECKLIST.md](docs/AIRVPN-VALIDATION-CHECKLIST.md:1)** - AirVPN validation guide
-10. **[services/gluetun/servers.json](services/gluetun/servers.json:1)** - AirVPN server configurations
+# Dashboard backup (Homarr SQLite is one-time setup; back it up)
+./scripts/dashboard-backup.sh
+./scripts/dashboard-restore.sh <backup.tar.gz>
+
+# Media-stack tools
+./media/maintenance/maintenance.sh health
+./media/maintenance/quick-debug.sh
+```
+
+## Tray indicator (KDE Plasma)
+
+`scripts/tray.py` autostarts on login. State at a glance:
+
+| Icon | Meaning |
+|------|---------|
+| 🟢 | All sections up |
+| 🟡 | Partial (some down) |
+| ⚫ | All down |
+
+Right-click → start/stop per category. Double-click → opens dashboard at `:7575` (auto-starts dashboard if down). Configured via `~/.config/autostart/home-server-tray.desktop` → `scripts/launcher.sh`.
 
 ---
 
-## ⚡ Essential Commands
+## Service ports
 
-### **Core Operations**
-```bash
-# Start entire stack
-./scripts/podman-up.sh
+| Service | Port | Section | Auth |
+|---------|------|---------|------|
+| Jellyfin | 8096 | media | Setup on first run |
+| qBittorrent WebUI | 8080 | media (via gluetun) | Temp password from logs (see below) |
+| Sonarr | 8989 | media | Web setup |
+| Radarr | 7878 | media | Web setup |
+| Bazarr | 6767 | media | Web setup |
+| Prowlarr | 9696 | media | Web setup |
+| FlareSolverr | 8191 | media | None |
+| Forge WebUI | 7860 | forge | None (localhost-only) |
+| SillyTavern | 8000 | sillytavern | ST built-in |
+| Homarr | 7575 | dashboard | Web setup (admin/password) |
 
-# Stop stack  
-./scripts/podman-down.sh
-
-# View all logs
-./scripts/podman-logs.sh
-
-# Health check (MOST IMPORTANT)
-./maintenance/maintenance.sh health
-```
-
-### **Debug & Troubleshooting**
-```bash
-# Enable debug mode
-./maintenance/maintenance.sh debug-enable
-
-# Quick health check
-./maintenance/quick-debug.sh
-
-# VPN troubleshooting
-./maintenance/maintenance.sh troubleshoot-vpn
-
-# Full diagnostic collection
-./maintenance/maintenance.sh diagnostic
-```
-
-### **Manual Podman Commands**
-```bash
-# Start with compose
-podman-compose -f core/podman-compose.yml up -d
-
-# View specific service logs
-podman-compose -f core/podman-compose.yml logs -f gluetun
-
-# Check service status
-podman-compose -f core/podman-compose.yml ps
-
-# Test VPN IP
-podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
-```
-
-### **Emergency/Recovery**
-```bash
-# Restart VPN service
-podman-compose -f core/podman-compose.yml restart gluetun
-
-# Full restart with fresh configs
-podman-compose -f core/podman-compose.yml down && podman-compose -f core/podman-compose.yml up -d --force-recreate
-
-# Clean up everything
-podman system prune -af
-```
+Add a reverse proxy with auth if you need LAN/remote access to anything other than dashboard.
 
 ---
 
-## 🏗️ Service Architecture (Simplified)
+## VRAM budget (RTX 4070 Ti SUPER 16GB)
 
-### **Dependency Chain**
-```
-gluetun (AirVPN) → qbittorrent → media services
-      ↓               ↓             ↓
-   VPN+PF         Downloads    Organization
-```
+Enforced by `scripts/vram-guard.sh` before GPU sections start.
 
-### **Critical Services & Ports**
-| Service | Port | Purpose | Health Check |
-|---------|------|---------|--------------|
-| **gluetun** | - | VPN gateway | `wget -qO- https://ipinfo.io` |
-| **qbittorrent** | 8080 | Downloads | `curl http://localhost:8080` |
-| **prowlarr** | 9696 | Indexers | `curl http://localhost:9696` |
-| **sonarr** | 8989 | TV Shows | `curl http://localhost:8989` |
-| **radarr** | 7878 | Movies | `curl http://localhost:7878` |
-| **jellyfin** | 8096 | Media Player | `curl http://localhost:8096` |
+| Combo | Peak VRAM | Status |
+|-------|-----------|--------|
+| Forge SDXL alone | ~12GB | Safe |
+| Jellyfin NVENC alone | ~2GB | Safe |
+| Forge + Jellyfin idle | ~12GB | Safe |
+| Forge + Jellyfin transcoding | ~14GB | Tight, soft warn |
+| Forge + Jellyfin 4K HEVC | ~15-16GB | Hard refuse |
 
-### **Key Environment Variables**
-```bash
-# REQUIRED (from core/.env)
-AIRVPN_WIREGUARD_PRIVATE_KEY=your_private_key_here    # From AirVPN Config Generator
-AIRVPN_WIREGUARD_ADDRESSES=your_addresses_here        # From AirVPN Config Generator
-QBIT_USER=admin                                       # qBittorrent web UI user
-QBIT_PASS=secure_password                            # qBittorrent web UI password
-
-# IMPORTANT
-AIRVPN_PORT_FORWARDING=true                          # Enable AirVPN port forwarding
-AIRVPN_SERVER_COUNTRIES=SG                          # Preferred server countries (Singapore for Vietnam)
-DEBUG=false                                          # Enable debug logging (set true for troubleshooting)
-```
+Don't run Forge + heavy transcoding simultaneously. Tray makes it easy to toggle one off.
 
 ---
 
-## 🚨 Common Issues & Quick Fixes
+## VPN verification (media section)
 
-### **VPN Connection Failed**
 ```bash
-# Check AirVPN WireGuard configuration
-podman-compose -f core/podman-compose.yml logs gluetun
+# Confirm tunnel is up + exit IP is AirVPN
+podman exec gluetun wget -qO- https://ipinfo.io
+# Expect: Singapore (M247 Europe SRL) — NOT your home WAN IP
 
-# Verify AirVPN credentials in core/.env
-grep -E "(AIRVPN_WIREGUARD_PRIVATE_KEY|AIRVPN_WIREGUARD_ADDRESSES)" core/.env
-
-# Restart VPN service
-podman-compose -f core/podman-compose.yml restart gluetun
+# Tunnel + firewall ports
+podman logs gluetun | grep -E "allowed input port|VPN connection"
 ```
 
-### **Port Forwarding Not Working**
-```bash
-# Check AirVPN port forwarding status
-podman-compose -f core/podman-compose.yml logs gluetun | grep -i "port"
-
-# Verify AIRVPN_PORT_FORWARDING=true in core/.env
-grep AIRVPN_PORT_FORWARDING core/.env
-
-# Check AirVPN account port forwarding settings
-# Visit: https://airvpn.org/client/ → Forwarded Ports
-```
-
-### **Downloads Stuck/Slow**
-```bash
-# Check qBittorrent connectivity
-curl http://localhost:8080
-
-# Verify VPN IP is different from host
-podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
-
-# Check available disk space
-df -h /media/Storage
-```
-
-### **Services Not Accessible**
-```bash
-# Check all service status
-./maintenance/maintenance.sh health
-
-# Restart specific service
-podman-compose -f core/podman-compose.yml restart SERVICE_NAME
-
-# Check if ports are bound correctly
-podman port --all
-```
-
-### **Debug Workflow**
-1. **Quick Check**: `./maintenance/maintenance.sh health`
-2. **Enable Debug**: `./maintenance/maintenance.sh debug-enable` 
-3. **Restart Services**: `podman-compose -f core/podman-compose.yml restart`
-4. **Collect Logs**: `./maintenance/maintenance.sh diagnostic`
-5. **Check Specific Issue**: `./maintenance/maintenance.sh troubleshoot-vpn`
+If the IP shows your home WAN, qBT is leaking. Check `network_mode: container:gluetun` on qBT service.
 
 ---
 
-## ⚙️ Configuration Essentials
+## Common issues
 
-### **Must-Configure Variables** ([core/.env.example](core/.env.example:1))
+### qBittorrent: temp password on first run / after reset
 ```bash
-# Copy and edit
-cp core/.env.example .env
+podman logs qbittorrent 2>&1 | grep "temporary password"
+# A temporary password is provided for this session: X2Wm96dyp
+```
+Default user `admin`. Set permanent password via UI (Tools → Options → Web UI) or API. Temp regenerates each container recreate.
 
-# REQUIRED - AirVPN Account
-AIRVPN_WIREGUARD_PRIVATE_KEY=your_private_key_here
-AIRVPN_WIREGUARD_ADDRESSES=your_addresses_here
-
-# REQUIRED - qBittorrent Web UI  
-QBIT_USER=admin
-QBIT_PASS=secure_password
-
-# RECOMMENDED
-AIRVPN_PORT_FORWARDING=true       # Better download speeds
-AIRVPN_SERVER_COUNTRIES=SG        # Optimal server selection (Singapore for Vietnam)
-DEBUG=false                       # Enable for troubleshooting
+### Gluetun env changes don't take effect after `podman restart`
+Restart preserves env baked at create time. To apply env changes:
+```bash
+./scripts/down.sh media && ./scripts/up.sh media
 ```
 
-### **AirVPN Setup Guide**
-1. **Create Account**: Visit https://airvpn.org/
-2. **Purchase Subscription**: Choose your plan
-3. **Access Config Generator**: Client Area → Config Generator
-4. **Select WireGuard**: Choose WireGuard protocol
-5. **Choose Servers**: Singapore recommended for Vietnam users
-6. **Generate Config**: Extract PrivateKey and Address values
-7. **Configure Port Forwarding**: Client Area → Forwarded Ports (optional)
+### AirVPN-specific config gotchas (from `commit 0238a98`)
+1. **`AIRVPN_SERVER_COUNTRIES`** uses full names (`Singapore`), NOT ISO codes (`SG`).
+2. **`AIRVPN_PORT_FORWARDING=false`** — gluetun doesn't auto-PF for AirVPN. PF is via airvpn.org client area.
+3. **`AIRVPN_WIREGUARD_PRESHARED_KEY`** is mandatory — extract from AirVPN's `.conf` file `[Peer] PresharedKey`.
+4. **PF wiring** = AirVPN client area port + `FIREWALL_VPN_INPUT_PORTS` in compose + qBT listening port (all three must match).
 
-### **Important Paths**
-| Path | Purpose | Notes |
-|------|---------|-------|
-| `/media/Storage/downloads` | qBittorrent downloads | Must exist, adequate space |
-| `/media/Storage/movies` | Radarr movie library | Jellyfin serves from here |
-| `/media/Storage/tv-shows` | Sonarr TV library | Jellyfin serves from here |
-| `./core/` | Core configuration files | Contains podman-compose.yml, .env |
-| `./services/gluetun/` | AirVPN configurations | Contains servers.json |
+Full details: [AIRVPN-VALIDATION-CHECKLIST.md](AIRVPN-VALIDATION-CHECKLIST.md).
 
-### **Security Considerations**
-- **Strong passwords**: Use unique passwords for all services
-- **AirVPN credentials**: Keep secure, enable 2FA if available
-- **File permissions**: Ensure media directories accessible
-- **Debug mode**: Disable in production (may expose sensitive info)
-- **VPN verification**: Always verify external IP differs from host
-- **WireGuard keys**: Never share your private key
-
----
-
-## 🔍 Health Check Commands
-
-### **Quick Status**
+### Container UID issues editing `data/` from host
+`data/` directories are container-owned (UID mapped via subuid). Use `podman unshare` for host-side ops:
 ```bash
-# Overall health (BEST FIRST CHECK)
-./maintenance/maintenance.sh health
-
-# Service status
-podman-compose -f core/podman-compose.yml ps
-
-# Resource usage
-podman stats --no-stream
+podman unshare rm -rf media/data/qbittorrent/some-config
+podman unshare chown -R 1000:1000 forge/data/
 ```
 
-### **VPN Verification**
+### GPU not available after driver upgrade
+CDI auto-regenerates via `_lib.sh:check_nvidia_cdi_configuration`. If a section fails to start with GPU errors, manual regen:
 ```bash
-# Check VPN IP
-podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
-
-# Test port forwarding (if enabled)
-podman-compose -f core/podman-compose.yml logs gluetun | grep -i "port"
-
-# VPN logs
-podman-compose -f core/podman-compose.yml logs -f gluetun | grep -E "(VPN|connection|port)"
+nvidia-ctk cdi generate --output ~/.config/containers/cdi/nvidia.yaml
 ```
 
-### **Service Connectivity**
-```bash
-# Test internal connectivity
-podman-compose -f core/podman-compose.yml exec sonarr curl http://prowlarr:9696
-podman-compose -f core/podman-compose.yml exec radarr curl http://gluetun:8080
+### Forge ai-dock image stale
+- `vpred` SDXL models broken (Zero Terminal SNR ignored). Use epsilon-prediction checkpoints.
+- Cold start ~3 minutes (xformers download); healthcheck waits 180s.
+- Launch flags via `forge/forge_args.conf`, NOT just `WEBUI_FLAGS` env.
 
-# Test web interfaces
-curl -I http://localhost:9696  # Prowlarr
-curl -I http://localhost:8096  # Jellyfin
+### Homarr tile pings fail
+Homarr v1.x runs in container. For media stack tiles, use **Use different URL for ping**:
+- Browser URL: `http://localhost:8096` (your view)
+- Ping URL: `http://host.containers.internal:8096` (Homarr's view)
+
+For AI sections (same `home-net` network), ping URL is container DNS: `http://home-forge:7860`.
+
+### Dashboard wiped after container restart
+Homarr v1.x stores state in SQLite. The compose mounts `./data:/appdata` (NOT `/data` — that path was wrong in earlier setup and wiped state). Verify mount:
+```bash
+podman inspect home-dashboard --format '{{json .Mounts}}' | python3 -m json.tool
 ```
 
 ---
 
-## 💻 Development & Contributing
+## Daily checks
 
-### **Setup**
 ```bash
-# Enable Git hooks (Required for contributors)
-git config core.hooksPath .githooks
+# Tray icon — first signal
+# 🟢 = all good. 🟡 / ⚫ = open scripts/logs.sh
+
+# VPN tunnel still up
+podman exec gluetun wget -qO- https://ipinfo.io
+
+# Disk space (downloads grow fast)
+df -h /home/haint/Data
 ```
 
-### **Commit Convention**
-We follow [Conventional Commits](https://www.conventionalcommits.org/) structure: `<type>(<scope>): <description>`
+## Weekly maintenance
 
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation only
-- `style`: Formatting, missing semi-colons, etc.
-- `refactor`: Code change that neither fixes a bug nor adds a feature
-- `chore`: Maintenance, build process, auxiliary tools
+```bash
+# Pull container updates
+for s in media forge sillytavern dashboard; do
+  podman-compose -f $s/compose.yml pull
+done
 
-**Example:** `feat(vpn): add new server location support`
+# Recycle to apply
+./scripts/down.sh all && ./scripts/up.sh all
 
-### **Pre-commit Checks**
-The configured hooks will automatically verify:
-- **Whitespace**: No trailing whitespace allowed.
-- **Shellcheck**: Validates shell scripts for errors and best practices.
-- **Commit Message**: Enforces the conventional commit format.
+# Backup dashboard config
+./scripts/dashboard-backup.sh
+```
 
 ---
 
-## 🎯 Quick Start Checklist
+## File map
 
-### **Setup** (First Time)
-- [ ] Clone repository
-- [ ] `cp core/.env.example .env` and configure AirVPN credentials
-- [ ] `mkdir -p /media/Storage/{downloads,movies,tv-shows}`
-- [ ] `./scripts/podman-up.sh`
-- [ ] `./maintenance/maintenance.sh health`
-
-### **Daily Operations**
-- [ ] Check health: `./maintenance/maintenance.sh health`
-- [ ] Monitor logs: `./scripts/podman-logs.sh`
-- [ ] Verify VPN: `podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io`
-
-### **Weekly Maintenance**
-- [ ] `./maintenance/maintenance.sh cleanup`
-- [ ] Update containers: `podman-compose -f core/podman-compose.yml pull && podman-compose -f core/podman-compose.yml up -d`
-- [ ] Check AirVPN account status at https://airvpn.org/client/
+```
+home-server/
+├── media/        compose.yml + .env + data/ + maintenance/   (Jellyfin + arr + qBT + VPN)
+├── forge/        compose.yml + .env + data/                  (Stable Diffusion)
+├── sillytavern/  compose.yml + .env + data/                  (LLM chat UI)
+├── dashboard/    compose.yml + .env + data/ + backups/       (Homarr)
+├── scripts/      up.sh down.sh logs.sh category.sh
+│                 tray.py launcher.sh vram-guard.sh
+│                 dashboard-backup.sh dashboard-restore.sh
+│                 _lib.sh                                    (shared lib)
+├── docs/         INDEX  README  QUICK-REF (this)
+│   ├─ PODMAN  AIRVPN-VALIDATION-CHECKLIST
+│   └─ media/   JELLYFIN-PERF  QBT-PERF  GPU-TIMING  BOOT-INVESTIGATION
+└── .claude/  .githooks/  AGENTS.md  CLAUDE.md
+```
 
 ---
 
-**🚀 TIP**: Start with `./maintenance/maintenance.sh health` for any issue. It covers 90% of common problems and provides specific guidance for failures. Enable `DEBUG=true` in [core/.env](core/.env:1) when troubleshooting complex issues.
+## See also
+
+- [README.md](README.md) — overview, requirements, install
+- [INDEX.md](INDEX.md) — full doc map
+- [PODMAN.md](PODMAN.md) — Podman fundamentals (rootless, SELinux, GPU)
+- [AIRVPN-VALIDATION-CHECKLIST.md](AIRVPN-VALIDATION-CHECKLIST.md) — VPN setup
+- [media/JELLYFIN-PERFORMANCE-OPTIMIZATION.md](media/JELLYFIN-PERFORMANCE-OPTIMIZATION.md) — transcoding tuning
+- [media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md](media/QBITTORRENT-PERFORMANCE-OPTIMIZATION.md) — qBT through VPN
+- Per-section READMEs: [forge/README.md](../forge/README.md), [sillytavern/README.md](../sillytavern/README.md), [dashboard/README.md](../dashboard/README.md)

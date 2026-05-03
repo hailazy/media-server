@@ -422,13 +422,11 @@ services:
       - JELLYFIN_MAX_MUXING_QUEUE_SIZE=2048
       - JELLYFIN_MAX_CONCURRENT_TRANSCODES=10
       - JELLYFIN_THREAD_COUNT=10
-      
     volumes:
       - ./data/jellyfin:/config:Z
       - ./data/jellyfin-cache:/cache:Z
       - ${TV_PATH}:/tv:z
       - ${MOVIES_PATH}:/movies:z
-       
     ports: ["8096:8096"]
     
     # Enhanced GPU Support for RTX 4070 Ti SUPER

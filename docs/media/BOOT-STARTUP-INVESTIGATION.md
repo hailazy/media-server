@@ -1,6 +1,6 @@
 # Boot/Startup Investigation Report
-Start here: [docs/INDEX.md](docs/INDEX.md:1)
-Reading order: 7/8 • Historical/Case Study (Optional)
+
+> **Pre-migration historical case study (media-server era, October 2025).** Useful as reference when debugging similar GPU/podman boot races. Path references (`core/`, `services/`, `podman-up.sh`) are stale — current equivalents are `media/`, `media/data/`, `scripts/up.sh`. The fixes from this investigation now live in `scripts/_lib.sh` and are applied automatically. See `../INDEX.md` for current architecture.
 
 **Investigation Date:** October 26, 2025  
 **Issue Reported:** Media stack and qBittorrent not starting after boot  

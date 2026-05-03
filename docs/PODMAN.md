@@ -1,12 +1,26 @@
-# Podman Support for Media Stack
-Start here: [docs/INDEX.md](docs/INDEX.md:1)
-Reading order: 3/8 • Essential
+# Podman Guide
 
-Comprehensive guide for running the Media Stack with Podman - the daemonless container engine that's fully compatible with Docker but offers enhanced security, rootless operation, and better integration with systemd.
+Comprehensive guide for running this home-server with Podman — the daemonless container engine, rootless by default, with native SELinux + systemd integration.
 
-> **📚 For general setup and usage:** See [`docs/README.md`](docs/README.md:1) for complete project documentation and quick start guides.
+> **📚 Overview:** [`docs/README.md`](README.md) — home-server architecture, requirements, install.
+> **⚡ Daily ops:** [`docs/QUICK-REF.md`](QUICK-REF.md) — commands, common issues.
+> **🗺️ Doc map:** [`docs/INDEX.md`](INDEX.md).
 
-> **⚡ For rapid deployment:** See [`docs/QUICK-REF.md`](docs/QUICK-REF.md:1) for essential commands and troubleshooting.
+## Per-section pattern (post-migration)
+
+This repo organizes services into **modular sections**, each its own podman-compose stack:
+
+```
+home-server/
+├── media/          compose.yml + .env + data/   (Jellyfin + arr + qBT + Gluetun)
+├── forge/          compose.yml + .env + data/   (Stable Diffusion WebUI)
+├── sillytavern/    compose.yml + .env + data/   (LLM chat UI)
+└── dashboard/      compose.yml + .env + data/   (Homarr launchpad)
+```
+
+Each section is independently startable. The wrapper scripts (`scripts/up.sh <section>`, `down.sh`, `logs.sh`) handle pre-flight (GPU CDI regen, network creation, VRAM guard) and pass the right `--env-file` and `-f compose.yml` flags. Direct `podman-compose` invocations work too — just remember to pass the per-section paths.
+
+The Podman fundamentals below (rootless, SELinux, GPU CDI, systemd integration) apply to every section. Section-specific quirks live in per-section READMEs (`forge/README.md`, etc.) and `docs/media/` deep-dives.
 
 ## 📋 Table of Contents
 
@@ -245,17 +259,17 @@ podman run --rm -v volume_name:/data -v $(pwd):/backup alpine tar xzf /backup/vo
 ### Docker Compose Compatibility
 
 The stack provides Podman-optimized configuration:
-- [`core/podman-compose.yml`](core/podman-compose.yml:1) - Main Podman configuration with SELinux labels
+- [`media/compose.yml`](media/compose.yml:1) - Main Podman configuration with SELinux labels
 
 ```bash
 # Use Podman-optimized configuration (recommended)
-podman-compose -f core/podman-compose.yml up -d
+podman-compose -f media/compose.yml up -d
 
 # Use convenience scripts (easiest)
-./scripts/podman-up.sh
+./scripts/up.sh media
 
 # Use advanced scripts
-./scripts/podman-up.sh
+./scripts/up.sh media
 ```
 
 ## 🔒 SELinux Configuration
@@ -280,8 +294,8 @@ volumes:
 
 # Shared media directories
 volumes:
-  - /media/Storage/movies:/movies:z     # Multiple containers can access
-  - /media/Storage/downloads:/downloads:z   # Shared between qbit, sonarr, radarr
+  - ${MEDIA_ROOT}/movies:/movies:z     # Multiple containers can access
+  - ${MEDIA_ROOT}/downloads:/downloads:z   # Shared between qbit, sonarr, radarr
 ```
 
 ### SELinux Policy Configuration
@@ -316,10 +330,10 @@ sudo setenforce 0  # Permissive mode
 sudo setenforce 1  # Re-enable
 
 # Check file contexts
-ls -laZ /media/Storage/
+ls -laZ ${MEDIA_ROOT}/
 
 # Restore default contexts if needed
-sudo restorecon -Rv /media/Storage/
+sudo restorecon -Rv ${MEDIA_ROOT}/
 
 # For persistent issues, you can disable SELinux for specific containers
 # Add to service definition:
@@ -345,12 +359,12 @@ nvidia-smi
 podman run --rm --device nvidia.com/gpu=all ubuntu:22.04 nvidia-smi
 
 # 3. Test with our Jellyfin container
-podman-compose -f core/podman-compose.yml exec jellyfin nvidia-smi
+podman-compose -f media/compose.yml exec jellyfin nvidia-smi
 ```
 
 #### Jellyfin GPU Configuration
 
-The [`core/podman-compose.yml`](core/podman-compose.yml:1) includes optimized GPU settings:
+The [`media/compose.yml`](media/compose.yml:1) includes optimized GPU settings:
 
 ```yaml
 jellyfin:
@@ -392,13 +406,13 @@ The stack includes convenience scripts optimized for Podman:
 
 ```bash
 # Start the entire stack
-./scripts/podman-up.sh
+./scripts/up.sh media
 
 # View logs with Podman-specific optimizations
-./scripts/podman-logs.sh
+./scripts/logs.sh media
 
 # Stop the stack
-./scripts/podman-down.sh
+./scripts/down.sh media
 
 # Quick troubleshooting
 ./maintenance/quick-debug.sh
@@ -408,32 +422,32 @@ The stack includes convenience scripts optimized for Podman:
 
 ```bash
 # Advanced startup with Podman-specific options
-./scripts/podman-up.sh
+./scripts/up.sh media
 
 # Advanced log viewing
-./scripts/podman-logs.sh -f service_name
+./scripts/logs.sh media -f service_name
 
 # Advanced shutdown
-./scripts/podman-down.sh
+./scripts/down.sh media
 ```
 
 ### Manual Podman Commands
 
 ```bash
 # Using podman-compose with optimized configuration
-podman-compose -f core/podman-compose.yml up -d
+podman-compose -f media/compose.yml up -d
 
 # Or using docker-compose syntax with Podman backend (requires podman-docker package)
-docker-compose -f core/podman-compose.yml up -d
+docker-compose -f media/compose.yml up -d
 
 # Check status
-podman-compose -f core/podman-compose.yml ps
+podman-compose -f media/compose.yml ps
 
 # View logs
-podman-compose -f core/podman-compose.yml logs -f
+podman-compose -f media/compose.yml logs -f
 
 # Stop services
-podman-compose -f core/podman-compose.yml down
+podman-compose -f media/compose.yml down
 ```
 
 ### Podman-Specific Verification
@@ -443,10 +457,10 @@ podman-compose -f core/podman-compose.yml down
 ./maintenance/maintenance.sh health
 
 # 2. Verify VPN connection
-podman-compose -f core/podman-compose.yml exec gluetun wget -qO- https://ipinfo.io
+podman-compose -f media/compose.yml exec gluetun wget -qO- https://ipinfo.io
 
 # 3. Check GPU access (if configured)
-podman-compose -f core/podman-compose.yml exec jellyfin nvidia-smi
+podman-compose -f media/compose.yml exec jellyfin nvidia-smi
 
 # 4. Test Podman-specific features
 podman ps --all  # Show rootless containers
@@ -509,17 +523,17 @@ podman system info  # Podman system information
 # - Performance sysctls disabled (requires root privileges)
 
 # Configuration:
-podman-compose -f core/podman-compose.yml up -d  # automatically rootless
+podman-compose -f media/compose.yml up -d  # automatically rootless
 ```
 
 **Performance Optimization Limitations in Rootless Mode:**
 
-The [`core/podman-compose.yml`](core/podman-compose.yml:1) file has been optimized for rootless compatibility. The following sysctls are commented out for rootless mode but can be enabled when running as root:
+The [`media/compose.yml`](media/compose.yml:1) file has been optimized for rootless compatibility. The following sysctls are commented out for rootless mode but can be enabled when running as root:
 
 ```yaml
 # ROOTLESS COMPATIBILITY NOTE:
 # The following sysctls require root privileges and are commented out for rootless mode.
-# To use these optimizations, run with: sudo podman-compose -f core/podman-compose.yml up -d
+# To use these optimizations, run with: sudo podman-compose -f media/compose.yml up -d
 # sysctls:
 #   - "net.core.rmem_max=134217728"      # Network buffer optimization (requires root)
 #   - "net.core.wmem_max=134217728"      # Network buffer optimization (requires root)
@@ -548,7 +562,7 @@ tmpfs:
 # - Complete kernel-level tuning capabilities
 
 # Usage:
-sudo podman-compose -f core/podman-compose.yml up -d
+sudo podman-compose -f media/compose.yml up -d
 
 # Security consideration: Containers run as root
 ```
@@ -609,22 +623,22 @@ podman image prune -f
 
 ```bash
 # Check SELinux context
-ls -laZ /media/Storage/
+ls -laZ ${MEDIA_ROOT}/
 
 # Fix SELinux context
-sudo restorecon -Rv /media/Storage/
+sudo restorecon -Rv ${MEDIA_ROOT}/
 
 # Or use correct volume labels in compose file
 # :Z for private access, :z for shared access
 volumes:
-  - /media/Storage/downloads:/downloads:z
+  - ${MEDIA_ROOT}/downloads:/downloads:z
 ```
 
 #### VPN connection fails
 
 ```bash
 # Check capabilities and devices
-podman-compose -f core/podman-compose.yml config | grep -A5 -B5 cap_add
+podman-compose -f media/compose.yml config | grep -A5 -B5 cap_add
 
 # Check SELinux context
 ls -Z /dev/net/tun
@@ -639,8 +653,8 @@ podman network ls
 podman network inspect podman
 
 # Test container-to-container connectivity
-podman-compose -f core/podman-compose.yml exec sonarr ping prowlarr
-podman-compose -f core/podman-compose.yml exec radarr curl http://gluetun:8080
+podman-compose -f media/compose.yml exec sonarr ping prowlarr
+podman-compose -f media/compose.yml exec radarr curl http://gluetun:8080
 
 # Reset network if needed
 podman network rm podman
@@ -684,10 +698,10 @@ sudo firewall-cmd --reload
 
 ```bash
 # Check logs for specific service
-./scripts/podman-logs.sh jellyfin
+./scripts/logs.sh media jellyfin
 
 # Verify compose file syntax
-podman-compose -f core/podman-compose.yml config
+podman-compose -f media/compose.yml config
 
 # Check resource availability
 df -h  # Disk space
@@ -705,18 +719,18 @@ DEBUG=true
 
 # Or export temporarily
 export DEBUG=true
-./scripts/podman-up.sh
+./scripts/up.sh media
 
 # View debug logs
-./scripts/podman-logs.sh -f gluetun
-./scripts/podman-logs.sh -f qbittorrent
+./scripts/logs.sh media -f gluetun
+./scripts/logs.sh media -f qbittorrent
 ```
 
 ### Logging and Monitoring
 
 ```bash
 # Comprehensive log viewing
-./scripts/podman-logs.sh --help
+./scripts/logs.sh media --help
 
 # System-wide container monitoring
 podman stats --all
@@ -781,7 +795,7 @@ journalctl -fu podman
 
 3. **Use rootful Podman** for full port range:
    ```bash
-   sudo podman-compose -f core/podman-compose.yml up -d
+   sudo podman-compose -f media/compose.yml up -d
    ```
 
 ### Volume Mount Performance
@@ -802,7 +816,7 @@ journalctl -fu podman
 2. **Optimize mount options**:
    ```yaml
    volumes:
-     - /media/Storage:/storage:z,rshared
+     - ${MEDIA_ROOT}:/storage:z,rshared
    ```
 
 ### SELinux Policy Gaps
@@ -902,7 +916,7 @@ Podman can generate systemd unit files for automatic startup:
 
 ```bash
 # Generate for entire compose stack
-podman-compose -f core/podman-compose.yml up -d
+podman-compose -f media/compose.yml up -d
 podman generate systemd --new --files --name media-stack
 
 # Move to systemd directory
