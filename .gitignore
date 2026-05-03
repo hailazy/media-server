@@ -1,6 +1,9 @@
 # Environment files (keep .env.example, ignore actual .env)
 .env
 
+# Claude Code runtime state (CLAUDE.md and settings.json stay tracked)
+.claude/*.lock
+
 # Legacy components (archived for reference only)
 legacy/.env*
 legacy/*/wireguard/
