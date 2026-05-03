@@ -1,0 +1,6 @@
+# Media stack runtime data — container configs, gluetun cache, large/sensitive
+data/
+
+# Backups (if any future scripts produce them here)
+backups/
+*.tar.gz

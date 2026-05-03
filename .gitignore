@@ -8,10 +8,6 @@ legacy/*/*.crt
 legacy/*/*.pem
 legacy/*/*.key
 
-# Configuration directories with sensitive data
-configs/
-!configs/**/.gitkeep
-
 # Backup files
 *.backup
 *.backup.*
@@ -34,13 +30,6 @@ logs/
 cache/
 transcodes/
 tmp/
-
-# VPN/Gluetun sensitive files
-gluetun/wireguard/
-gluetun/servers.json
-gluetun/*.crt
-gluetun/*.pem
-gluetun/*.key
 
 # VS Code settings (optional, uncomment if you want to ignore)
 # .vscode/

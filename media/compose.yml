@@ -59,7 +59,7 @@ services:
       - TZ=Asia/Ho_Chi_Minh
     volumes:
       # SELinux: :Z creates private labeled volume for this container only
-      - ../configs/prowlarr:/config:Z
+      - ./data/prowlarr:/config:Z
     ports: ["9696:9696"]
     restart: unless-stopped
     healthcheck:
@@ -85,10 +85,10 @@ services:
       - UMASK=002
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      - ../configs/sonarr:/config:Z
+      - ./data/sonarr:/config:Z
       # SELinux: :z allows sharing between containers (sonarr, radarr, etc.)
-      - /media/Storage/tv-shows:/tv:z
-      - /media/Storage/downloads:/downloads:z
+      - ${TV_PATH}:/tv:z
+      - ${DOWNLOADS_PATH}:/downloads:z
     ports: ["8989:8989"]
     restart: unless-stopped
     depends_on: [ prowlarr ]
@@ -114,9 +114,9 @@ services:
       - UMASK=002
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      - ../configs/radarr:/config:Z
-      - /media/Storage/movies:/movies:z
-      - /media/Storage/downloads:/downloads:z
+      - ./data/radarr:/config:Z
+      - ${MOVIES_PATH}:/movies:z
+      - ${DOWNLOADS_PATH}:/downloads:z
     ports: ["7878:7878"]
     # Podman: security_opt label=disable bypasses SELinux for this container
     security_opt: [ "label=disable" ]
@@ -144,9 +144,9 @@ services:
       - UMASK=002
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      - ../configs/bazarr:/config:Z
-      - /media/Storage/tv-shows:/tv:z
-      - /media/Storage/movies:/movies:z
+      - ./data/bazarr:/config:Z
+      - ${TV_PATH}:/tv:z
+      - ${MOVIES_PATH}:/movies:z
     ports: ["6767:6767"]
     restart: unless-stopped
     depends_on: [ sonarr, radarr ]
@@ -179,6 +179,8 @@ services:
       - VPN_TYPE=wireguard
       - FIREWALL=on
       - FIREWALL_INPUT_PORTS=8080
+      # AirVPN-forwarded port: allows incoming torrent traffic through VPN tunnel
+      - FIREWALL_VPN_INPUT_PORTS=${AIRVPN_FORWARDED_PORT}
       - FIREWALL_OUTBOUND_SUBNETS=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - TZ=Asia/Ho_Chi_Minh
       # AirVPN supports automatic port forwarding
@@ -205,7 +207,7 @@ services:
       # Optional: Specify specific server names
       - SERVER_NAMES=${AIRVPN_SERVER_NAMES}
     volumes:
-      - ./services/gluetun:/gluetun:Z # for scripts and legacy configs
+      - ./data/gluetun:/gluetun:Z # for scripts and legacy configs
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -298,8 +300,8 @@ services:
       - QBT_FORCE_PROXY=false                     # Allow direct connections when beneficial
       
     volumes:
-      - ../configs/qbittorrent:/config:Z
-      - /media/Storage/downloads:/downloads:z    # NVMe optimization (noatime applied via mount options)
+      - ./data/qbittorrent:/config:Z
+      - ${DOWNLOADS_PATH}:/downloads:z    # NVMe optimization (noatime applied via mount options)
       
     # CPU Allocation for Ryzen 5 7600X3D (avoid Jellyfin's CPU cores 0-9)
     cpus: "1.0"                    # 1 core worth of CPU time (2 threads)
@@ -422,10 +424,10 @@ services:
       - JELLYFIN_THREAD_COUNT=10
       
     volumes:
-      - ../configs/jellyfin:/config:Z
-      - ../configs/jellyfin-cache:/cache:Z
-      - /media/Storage/tv-shows:/tv:z
-      - /media/Storage/movies:/movies:z
+      - ./data/jellyfin:/config:Z
+      - ./data/jellyfin-cache:/cache:Z
+      - ${TV_PATH}:/tv:z
+      - ${MOVIES_PATH}:/movies:z
        
     ports: ["8096:8096"]
     
