@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Home Server system tray indicator with dynamic state-aware menu."""
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,23 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 HOME_SERVER = Path(__file__).resolve().parent.parent
 CATEGORY_SH = HOME_SERVER / "scripts" / "category.sh"
+UPDATE_SH = HOME_SERVER / "scripts" / "update.sh"
+
+# Terminal emulators in preference order (KDE Plasma → konsole first).
+# Each entry: (binary name, argv prefix to run a command).
+TERMINALS = [
+    ("konsole",        ["konsole", "-e"]),
+    ("gnome-terminal", ["gnome-terminal", "--"]),
+    ("xterm",          ["xterm", "-e"]),
+]
+
+
+def find_terminal() -> list[str] | None:
+    """Return argv prefix for the first available terminal, or None."""
+    for binary, prefix in TERMINALS:
+        if shutil.which(binary):
+            return prefix
+    return None
 
 SECTIONS = ["forge", "sillytavern", "dashboard", "media"]
 SECTION_CONTAINERS = {
@@ -131,6 +149,7 @@ class HomeServerTray(QSystemTrayIcon):
             )
 
         self.menu.addSeparator()
+        self.menu.addAction("Update Services").triggered.connect(self.run_update)
         self.menu.addAction("Refresh").triggered.connect(self.update_icon_and_tooltip)
         self.menu.addAction("Quit Tray").triggered.connect(self.app.quit)
 
@@ -155,6 +174,24 @@ class HomeServerTray(QSystemTrayIcon):
             QTimer.singleShot(5000, lambda: subprocess.Popen(["xdg-open", "http://localhost:7575"]))
         else:
             subprocess.Popen(["xdg-open", "http://localhost:7575"])
+
+    def run_update(self):
+        # Pull is slow + interactive (recycle prompt) — surface in a terminal.
+        term = find_terminal()
+        if term is None:
+            self.showMessage(
+                "Home Server",
+                "No terminal emulator found (konsole/gnome-terminal/xterm). "
+                f"Run manually: {UPDATE_SH}",
+                QSystemTrayIcon.MessageIcon.Critical,
+            )
+            return
+        subprocess.Popen(
+            term + [str(UPDATE_SH)],
+            cwd=str(HOME_SERVER),
+        )
+        # Recycle (if user accepts) takes ~1-2 min — re-poll soon after.
+        QTimer.singleShot(120_000, self.update_icon_and_tooltip)
 
 
 def main():

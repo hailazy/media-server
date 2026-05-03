@@ -25,6 +25,7 @@ Home server orchestrating self-hosted personal services. Single repo, modular se
 - Stop: `./scripts/down.sh <section>`
 - Logs: `./scripts/logs.sh <section> -f [services...]`
 - Toggle by category: `./scripts/category.sh {ai|media|all} {toggle|up|down|status}` (used by tray + .desktop Actions)
+- Update images: `./scripts/update.sh` — pulls latest images for all sections, prompts to recycle running ones
 - Dashboard backup/restore: `./scripts/dashboard-backup.sh` / `./scripts/dashboard-restore.sh <backup.tar.gz>`
 - Pre-flight: GPU CDI auto-regen for media+forge (handled by `scripts/_lib.sh`)
 - VRAM guard: `scripts/vram-guard.sh check <section>` runs before GPU-using sections start
@@ -33,7 +34,8 @@ Home server orchestrating self-hosted personal services. Single repo, modular se
 - `scripts/tray.py` — PyQt6 tray indicator with dynamic state-aware menu
 - Autostart entry: `~/.config/autostart/home-server-tray.desktop`
 - Icon color: 🟢 all up · 🟡 partial · ⚫ all down
-- Right-click menu: dynamic Start/Stop per category (AI, Media, All), Open Dashboard, Refresh, Quit
+- Right-click menu: dynamic Start/Stop per category (AI, Media, All), Open Dashboard, Update Services, Refresh, Quit
+- Update Services opens `update.sh` in a terminal (konsole → gnome-terminal → xterm fallback chain) so user sees pull progress + interactive recycle prompt
 - Double-click: open Homarr dashboard (auto-starts if down)
 - Only the tray itself autostarts on login. Sections (forge/ST/media) stay down until user toggles — saves VRAM.
 

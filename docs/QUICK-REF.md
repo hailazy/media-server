@@ -17,6 +17,9 @@ Daily-driver command card. Start here for any task.
 # Multi-section (used by tray)
 ./scripts/category.sh {ai|media|all} {toggle|up|down|status}
 
+# Pull latest images for all sections (interactive recycle prompt)
+./scripts/update.sh
+
 # Dashboard backup (Homarr SQLite is one-time setup; back it up)
 ./scripts/dashboard-backup.sh
 ./scripts/dashboard-restore.sh <backup.tar.gz>
@@ -39,7 +42,7 @@ Daily-driver command card. Start here for any task.
 | 🟡 | Partial (some down) |
 | ⚫ | All down |
 
-Right-click → start/stop per category. Double-click → opens dashboard at `:7575` (auto-starts dashboard if down). Configured via `~/.config/autostart/home-server-tray.desktop` → `scripts/launcher.sh`.
+Right-click → start/stop per category, **Update Services** (pulls latest images for all sections + recycle prompt, in a terminal), Refresh, Quit. Double-click → opens dashboard at `:7575` (auto-starts dashboard if down). Configured via `~/.config/autostart/home-server-tray.desktop` → `scripts/launcher.sh`.
 
 ---
 
@@ -199,13 +202,9 @@ df -h /home/haint/Data
 ## Weekly maintenance
 
 ```bash
-# Pull container updates
-for s in media forge sillytavern dashboard; do
-  podman-compose -f $s/compose.yml pull
-done
-
-# Recycle to apply
-./scripts/down.sh all && ./scripts/up.sh all
+# Pull container updates + interactive recycle prompt for running sections
+./scripts/update.sh
+# Or via tray: right-click → Update Services
 
 # Backup dashboard config
 ./scripts/dashboard-backup.sh
@@ -221,7 +220,7 @@ home-server/
 ├── forge/        compose.yml + .env + data/                  (Stable Diffusion)
 ├── sillytavern/  compose.yml + .env + data/                  (LLM chat UI)
 ├── dashboard/    compose.yml + .env + data/ + backups/       (Homarr)
-├── scripts/      up.sh down.sh logs.sh category.sh
+├── scripts/      up.sh down.sh logs.sh category.sh update.sh
 │                 tray.py launcher.sh vram-guard.sh
 │                 dashboard-backup.sh dashboard-restore.sh
 │                 _lib.sh                                    (shared lib)

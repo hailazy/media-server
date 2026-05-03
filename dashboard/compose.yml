@@ -9,7 +9,8 @@ services:
       - ./data:/appdata:z
     environment:
       - TZ=Asia/Ho_Chi_Minh
-      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY:?dashboard/.env must set SECRET_ENCRYPTION_KEY (generate via: openssl rand -hex 32)}
+      # Quoted: the message contains ": " which YAML would otherwise parse as a map.
+      - "SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY:?dashboard/.env must set SECRET_ENCRYPTION_KEY (generate via: openssl rand -hex 32)}"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7575"]
       interval: 60s
