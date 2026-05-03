@@ -117,7 +117,13 @@ $EDITOR media/.env
 - Sets root folders `/tv` (Sonarr) and `/movies` (Radarr)
 - Configures Bazarr to talk to Sonarr+Radarr
 
-After it runs: only manual step left is **adding indexers in Prowlarr** (Settings → Indexers → Add).
+After it runs: optionally bulk-add indexers via:
+
+```bash
+./media/scripts/add-public-indexers.sh
+```
+
+Pulls Prowlarr's public-torrent indexer registry (~95 indexers as of 2026-05) and bulk-adds via API. Idempotent (skips already-added). Auto-creates a `flaresolverr` tag, attaches it to the FlareSolverr proxy, and tags every new indexer — Cloudflare-protected indexers route through FlareSolverr automatically. Expect ~70-75 success / ~20 fail (dead trackers, region blocks, redirected sites — these need manual addition or pruning).
 
 ---
 
