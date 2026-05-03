@@ -24,6 +24,9 @@ Daily-driver command card. Start here for any task.
 # Media-stack tools
 ./media/maintenance/maintenance.sh health
 ./media/maintenance/quick-debug.sh
+
+# First-time / post-wipe wiring (Prowlarr↔arrs, Sonarr/Radarr→qBT, Bazarr↔arrs, root folders)
+./media/scripts/provision.sh
 ```
 
 ## Tray indicator (KDE Plasma)
@@ -90,6 +93,32 @@ If the IP shows your home WAN, qBT is leaking. Check `network_mode: container:gl
 
 ---
 
+## First-time setup (or post-wipe re-deploy)
+
+```bash
+# 1. Configure media/.env (copy from .env.example, fill QBIT_USER/QBIT_PASS + AirVPN keys)
+cp media/.env.example media/.env
+$EDITOR media/.env
+
+# 2. Bring stack up
+./scripts/up.sh media
+
+# 3. Wire all services together (Prowlarr↔arrs, qBT download client, Bazarr, root folders)
+./media/scripts/provision.sh
+```
+
+`provision.sh` is idempotent — safe to re-run any time. It:
+- Reads arr API keys from `media/data/<service>/config.{xml,yaml}` (auto-discovered, no manual copy)
+- Sets qBittorrent permanent password from `QBIT_PASS` (replaces the temp from logs)
+- Adds Sonarr+Radarr to Prowlarr (Apps), FlareSolverr proxy
+- Adds qBittorrent as download client in Sonarr+Radarr
+- Sets root folders `/tv` (Sonarr) and `/movies` (Radarr)
+- Configures Bazarr to talk to Sonarr+Radarr
+
+After it runs: only manual step left is **adding indexers in Prowlarr** (Settings → Indexers → Add).
+
+---
+
 ## Common issues
 
 ### qBittorrent: temp password on first run / after reset
@@ -97,7 +126,7 @@ If the IP shows your home WAN, qBT is leaking. Check `network_mode: container:gl
 podman logs qbittorrent 2>&1 | grep "temporary password"
 # A temporary password is provided for this session: X2Wm96dyp
 ```
-Default user `admin`. Set permanent password via UI (Tools → Options → Web UI) or API. Temp regenerates each container recreate.
+Default user `admin`. Run `./media/scripts/provision.sh` to set the permanent password from `QBIT_PASS` in `.env` (idempotent). Or set via UI (Tools → Options → Web UI). Temp regenerates each container recreate; permanent persists in volume.
 
 ### Gluetun env changes don't take effect after `podman restart`
 Restart preserves env baked at create time. To apply env changes:
