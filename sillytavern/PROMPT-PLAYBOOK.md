@@ -215,6 +215,31 @@ For hetero rimjob composition:
 
 Production: default to top-down for hetero rimjob, side-view as alternative with strong panel negative.
 
+### 5.32 POV/view tag stacking → split composition (verified 2026-05-05)
+**THE GOTCHA underlying many "duplicate subject" + "extra male" reports.**
+
+When prompt stacks 3+ POV/view tags (especially mixing internal + external views), SDXL renders **inset panels / split composition / duplicate subjects**.
+
+**Example failure:**
+```
+1girl, solo, vaginal_sex, cross_section, internal_view, x-ray, close-up, ...
+```
+→ split into 2 panels: one solo subject + one inset showing internal anatomy. Inset panel often gets filled with action-tag's natural visualization (hetero action → phallic shape in inset). User reads as "extra male appeared despite solo".
+
+**Verification (A/B isolation, 2026-05-05):**
+- Test A: `1girl, solo, masturbation, cross_section, internal_view, x-ray, close-up, bedroom` → ❌ split composition + inset panel
+- Test B: `1girl, solo, masturbation, internal_view, bedroom` → ✅ clean single composition
+- Test C: `1girl, solo, vaginal_sex, lying_on_back, bedroom` (no POV stack) → ✅ clean solo (mature lock-in suppresses force-fill)
+- Test D: `1girl, solo, vaginal_sex` + 4-POV stack → split with hetero phallic inset
+
+**Production rule (Mode 4 v7.1):**
+- ✅ External view: pick ONE → close-up OR wide_shot OR pov OR side_view OR top-down
+- ✅ Internal view: pick ONE → x-ray OR internal_view OR cross-section
+- ❌ NEVER stack `cross_section + internal_view + x-ray + close-up` — guaranteed split
+- ❌ Don't stack 3+ view tags from any combo
+
+**Cascade clarification:** "Action tag overrides solo" was earlier hypothesis — proven WRONG in isolation. `vaginal_sex + solo` alone with mature baseline renders clean (test C). Male appearance only emerges as DOWNSTREAM effect of POV stacking creating split → inset filled with hetero visualization. Fix POV stack → action tag becomes safe.
+
 ### 5.31 Niche fetish genres = Parasite RP arc support
 NoobAI XL has strong training for niche hentai fetish genres. All verified at ⭐⭐⭐⭐ to ⭐⭐⭐⭐⭐.
 
@@ -495,45 +520,56 @@ For body horror/parasite scenes drop `pink_skin, pink_body` if you WANT body col
 
 ## 8. Mode 4 Template (for Magnum to follow)
 
-When ST QR triggers `/sd last`, Magnum reads this template and outputs booru tags. The template enforces:
+When ST QR triggers `/sd last`, Magnum reads this template and outputs booru tags. Production version: **v7.1** (2026-05-05, 4256 chars). Lives in `settings.json:extension_settings.sd.prompts["4"]` (gitignored — private RP config).
+
+Key rules enforced:
+
+**1. REQUIRED first tag — subject count** (composition primer):
+- Solo character (parasite-inside doesn't count) → `1girl, solo`
+- Female + 1 male partner → `1girl, 1boy`
+- Female + parasite-inside + male partner → `1girl, 1boy` (creature ≠ subject)
+- Female + 1 female partner → `2girls`
+- 3+ → chibi/silhouette/body_parts
+
+**2. POV DEDUP RULE** (load-bearing — see [gotcha 5.32](#532-povview-tag-stacking--split-composition-verified-2026-05-05)):
+- External view: pick ONE → close-up OR wide_shot OR pov OR side_view OR top-down
+- Internal view: pick ONE → x-ray OR internal_view OR cross-section
+- NEVER stack `cross_section + internal_view + x-ray + close-up` — guaranteed split composition
+
+**3. SKIP identity tags** (auto-injected via char_prompts):
+- Don't echo: japanese, mature_female, milf, plump, large_breasts, black_hair, etc.
+- Don't echo persona default outfit unless scene specifies it
+
+**4. ACTION TAG VOCABULARY** (use category matching actual scene — gender prior aware):
+- SOLO scenes: masturbation, parasite_in_pussy, tentacle_sex, oviposition, vaginal_object_insertion
+- HETERO scenes (`1girl, 1boy`): vaginal_sex, oral_sex, missionary, doggystyle, paizuri
+- YURI scenes (`2girls`): yuri, kiss, cunnilingus, tribadism
+- COMBO (parasite-inside + male — common in Naoko arc): `1girl, 1boy` + both action tags (e.g., `vaginal_sex, parasite_in_pussy`)
+
+**5. NEVER OUTPUT**: text, speech_bubble, dialogue, comic_panel, panels, narrative prose
+
+**Correct examples:**
 
 ```
-[END ROLEPLAY — IMAGE PROMPT GENERATION MODE]
+2girls, yuri, intimate_kiss, embracing, faces_pressed_together, both_topless, drool, deep_blush, ecstatic, warm_lighting, bokeh_background
 
-Output ONLY comma-separated booru/danbooru-style tags. No sentences. No narrative.
+1girl, 1boy, hetero, pov, fellatio, tongue_out, licking, looking_up_at_viewer, blissed_out, deep_blush, dim_bedroom, warm_lighting
 
-ASYMMETRIC RULE:
-- {{char}} visual = auto-injected by char_prompts. Don't duplicate.
-- {{user}} visual = describe from persona description (hair, eyes, body type, ethnicity, outfit).
-
-TAG ORDER (STRICT):
-1. Subject count (1girl, 2girls, 1boy + 1girl, 1girl + 1dog, etc.). For 3+ chars use chibi convention.
-2. Encounter/scene type (intimate, confrontation, encounter_scene, masturbation, sex_act)
-3. Emotion FIRST (shocked_expression, blissed_out, ahegao, ecstatic, surrendered)
-4. {{user}} appearance (mature lock-in if Naoko: milf, mom_(mature), housewife, plump, large_breasts, black_hair)
-5. Other character appearance (avoid schoolgirl bias — use mature_adult, twenty_something, etc.)
-6. Primary action / pose (cowgirl, fellatio, kiss, embrace, masturbation, etc.)
-7. Body details / clothing state
-8. Setting (blurred or detailed — use bokeh_background for emotion focus)
-9. Camera/composition (close-up, wide_shot, pov, side_view, three_quarters_view)
-10. Lighting (warm_lighting, dim_lighting, soft_natural_lighting)
-
-COMPOSITION RULES:
-- 2-char scene: design around CONTACT (kiss, embrace) not SPACE (side-by-side)
-- 3+ char scene: 1-2 main + others as chibi_reaction or background_silhouette
-- AVOID: wide aspect framing for multi-char (use square/mild aspects)
-- ANTI-text: NEVER output speech_bubble, text, dialogue, watermark
-
-CORRECT examples:
-"2girls, yuri, intimate_kiss, embracing, faces_pressed_together, milf, mom_(mature), 35yo, plump, large_breasts, twenty_something_partner, slimmer, both_topless, drool, deep_blush, ecstatic, warm_lighting, bokeh_background"
-
-"1girl, 1boy, hetero, pov, fellatio, milf, mom_(mature), tongue_out, licking, looking_up_at_viewer, blissed_out, deep_blush, dim_bedroom, warm_lighting"
-
-WRONG:
-"Naoko was kissing the woman..." (no narrative)
-"1girl, schoolgirl, sailor_uniform" ({{user}} is mature, not schoolgirl)
-"text, speech_bubble" (never include)
+1girl, solo, parasite_in_pussy, internal_view, cervix, lying_on_back, swollen_belly, blissed_out, bedroom, warm_lighting
 ```
+
+**Wrong:**
+```
+"Naoko was kissing the woman..."           ← narrative prose
+1girl, schoolgirl, sailor_uniform          ← {{user}} is mature, schoolgirl bias
+1girl, solo, vaginal_sex, x-ray, cross_section, internal_view, close-up   ← POV stack → split comp (gotcha 5.32)
+```
+
+**Iteration history:**
+- v1-v5 (2026-05-05): tested various framings — over-long/example-heavy templates produced narrative prose, copy-verbatim outputs, persona echoes
+- v6: added explicit subject count requirement (fixed 2-girls bug)
+- v7: added action tag gender-prior consistency rule + POV dedup
+- v7.1 (current): softened — dropped consistency-enforcement framing (over-engineered, action tag bias proven downstream of POV stack), kept vocabulary buckets + POV dedup as load-bearing fix
 
 ---
 
@@ -576,6 +612,8 @@ sd['character_prompts']['Your Oblivious Mother'] = (
 | Pink/colored body | Creature color bleed | Add `pink_skin, pink_body, parasite_fusion` to negative |
 | Back view when wanted front | Negative direction unreliable | Use positive `(front_view:1.4), looking_at_viewer` |
 | 2 Naokos rendered | Wide aspect (1344+) | Switch to 1024×1024 or 1152×896 |
+| Split composition / inset panels / duplicate subject | POV/view tag stacking (3+) | Pick ONE primary view — see gotcha 5.32 |
+| "Extra male" appears despite `solo` | Cascade from POV stack creating split → inset filled with hetero action | Fix POV dedup, not action tag — gotcha 5.32 |
 | Faces merged in 2-char | Spatial separation issue | Use intimate physical merge (kiss/embrace) |
 | Schoolgirl steals attributes | Multi-char with similar gender | Add `slimmer_than_naoko, NOT_schoolgirl` to partner tags |
 | Hand anatomy off in masturbation | ADetailer face only | Accept or set up hand_yolov8n.pt second pass |
