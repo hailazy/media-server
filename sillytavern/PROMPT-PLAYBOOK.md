@@ -240,6 +240,38 @@ When prompt stacks 3+ POV/view tags (especially mixing internal + external views
 
 **Cascade clarification:** "Action tag overrides solo" was earlier hypothesis — proven WRONG in isolation. `vaginal_sex + solo` alone with mature baseline renders clean (test C). Male appearance only emerges as DOWNSTREAM effect of POV stacking creating split → inset filled with hetero visualization. Fix POV stack → action tag becomes safe.
 
+### 5.33 STscript path silently breaks `/summarize` → use `/dom action=click` workaround (verified 2026-05-05)
+
+**The gotcha:** `/summarize` slash command via STscript chain (Quick Reply, manual typing, or any pipe-based invocation) silently fails — no toast, no error, textarea stays empty. Console shows profile switch + dryRun events but `'sending summary prompt'` never logs.
+
+**Root cause:** `/summarize` callback → `forceSummarizeChat` → `summarizeChatMain` → `getSummaryPromptForNow` calls `await waitUntilCondition(() => is_send_press === false, 30000, 100)`. STscript executor sets `is_send_press=true` while running the slash command chain. `/summarize` waits up to 30s for the lock to release — but it never does until the entire chain finishes → silent timeout → empty return → silent exit. No `'sending summary prompt'` log because that line is reached only AFTER `getSummaryPromptForNow` returns non-empty.
+
+**Verification (2026-05-05):**
+- Path A — manual: switch profile via UI dropdown, then click "Summarize now" button in Extensions → Summarize panel → ✅ works (button click is direct function call, no slash command lock)
+- Path B — slash command: `/summarize ""` typed in chat OR via QR pipe → ❌ fails silently (slash command path locks `is_send_press`)
+- Disabling GuidedGenerations Extension does NOT fix Path B → not a GG issue, the lock is intrinsic to STscript executor.
+
+**Workaround — programmatic DOM click via LALib:**
+```
+/profile timeout=5000 Magnum — Image Gen | /delay 1000 | /dom action=click "#memory_force_summarize" | /delay 30000 | /profile DeepSeek daily
+```
+
+LALib's `/dom action=click` dispatches native DOM `pointerdown`/`click`/`pointerup` events on the panel button → fires `forceSummarizeChat(false)` in user-event context (NOT slash-command context) → bypasses `is_send_press` lock. `/delay 30000` reserves 30s for Magnum 72B to finish before profile switches back.
+
+**Side dependencies:**
+- LALib must be enabled (provides `/dom`)
+- Summary uses `prompt_builder: 1` (RAW_BLOCKING) to bypass prompt manager — clean prompt, no WI/persona injection (DEFAULT path adds `personaDescription` system message that biases Magnum back into RP voice)
+- Summary auto-trigger DISABLED (`promptInterval: 0`) — manual control only via QR button. Auto-fire would use whatever connection is active at trigger moment → likely DeepSeek RP-tuned → continuation prose instead of structured summary.
+- DeepSeek RP-tuned IGNORES "STOP. END OF ROLEPLAY" directives in summary prompt, outputs narrative continuation. Magnum 72B compliant — `/profile` switch to Magnum is non-negotiable for summary path.
+
+**Stored config (settings.json):**
+```
+extension_settings.memory.prompt_builder: 1       # RAW_BLOCKING
+extension_settings.memory.SkipWIAN: True          # bypass WI/AN
+extension_settings.memory.promptInterval: 0       # disable auto-trigger
+extension_settings.memory.source: "main"          # uses active connection (binds to QR-controlled profile)
+```
+
 ### 5.31 Niche fetish genres = Parasite RP arc support
 NoobAI XL has strong training for niche hentai fetish genres. All verified at ⭐⭐⭐⭐ to ⭐⭐⭐⭐⭐.
 
@@ -520,42 +552,41 @@ For body horror/parasite scenes drop `pink_skin, pink_body` if you WANT body col
 
 ## 8. Mode 4 Template (for Magnum to follow)
 
-When ST QR triggers `/sd last`, Magnum reads this template and outputs booru tags. Production version: **v7.1** (2026-05-05, 4256 chars). Lives in `settings.json:extension_settings.sd.prompts["4"]` (gitignored — private RP config).
+When ST QR triggers `/sd last`, Magnum reads this template + chat last message and outputs booru tags. Production version: **v8.2** (2026-05-05, 2144 chars — stripped to hard rules only). Lives in `settings.json:extension_settings.sd.prompts["4"]` (gitignored — private RP config).
 
-Key rules enforced:
+**Source context injection:** Template includes `{{summary}}` macro at top → injects current chat summary (from Summarize extension, manually maintained via QR Summary button — see [gotcha 5.33](#533-stscript-path-silently-breaks-summarize--use-dom-actionclick-workaround-verified-2026-05-05)). Combined with last message, gives Magnum scene context + recent state.
+
+**5 hard rules (everything else is Magnum's judgment from booru training):**
 
 **1. REQUIRED first tag — subject count** (composition primer):
 - Solo character (parasite-inside doesn't count) → `1girl, solo`
 - Female + 1 male partner → `1girl, 1boy`
 - Female + parasite-inside + male partner → `1girl, 1boy` (creature ≠ subject)
 - Female + 1 female partner → `2girls`
-- 3+ → chibi/silhouette/body_parts
 
 **2. POV DEDUP RULE** (load-bearing — see [gotcha 5.32](#532-povview-tag-stacking--split-composition-verified-2026-05-05)):
-- External view: pick ONE → close-up OR wide_shot OR pov OR side_view OR top-down
-- Internal view: pick ONE → x-ray OR internal_view OR cross-section
-- NEVER stack `cross_section + internal_view + x-ray + close-up` — guaranteed split composition
+- External view: pick ONE → close-up | wide_shot | pov | side_view | from_below | from_above | dynamic_angle | foreshortening
+- Internal view: pick ONE (optional) → x-ray | internal_view | cross-section
+- NEVER stack 3+ view tags. NEVER stack `cross_section + internal_view + x-ray + close-up` — guaranteed split composition.
 
 **3. SKIP identity tags** (auto-injected via char_prompts):
-- Don't echo: japanese, mature_female, milf, plump, large_breasts, black_hair, etc.
-- Don't echo persona default outfit unless scene specifies it
+- Don't echo: japanese, mature_female, milf, mom_(mature), housewife, plump, voluptuous, large_breasts, fair_skin, long_black_hair, black_hair, brown_eyes
+- Don't echo persona default outfit unless scene specifies different clothing
 
-**4. ACTION TAG VOCABULARY** (use category matching actual scene — gender prior aware):
-- SOLO scenes: masturbation, parasite_in_pussy, tentacle_sex, oviposition, vaginal_object_insertion
-- HETERO scenes (`1girl, 1boy`): vaginal_sex, oral_sex, missionary, doggystyle, paizuri
-- YURI scenes (`2girls`): yuri, kiss, cunnilingus, tribadism
-- COMBO (parasite-inside + male — common in Naoko arc): `1girl, 1boy` + both action tags (e.g., `vaginal_sex, parasite_in_pussy`)
+**4. MINIMUM 15 tags** (up to 30 if scene complex). Cover what's visually present: action, pose, clothing state, body fluids, expression, setting, lighting.
 
-**5. NEVER OUTPUT**: text, speech_bubble, dialogue, comic_panel, panels, narrative prose
+**5. ALWAYS END WITH:** `(((masterpiece,best quality,newest,absurdres,highres)))` — quality reinforcement at tail (prompt_prefix already injects at start = 2x emphasis).
+
+**Format:** ONE continuous comma-separated line. No section labels in output. Weight syntax allowed: `(tag:1.2)`, `[tag]`, `[[tag]]`, `((tag))`, escape parens for franchise names. NEVER output: text, speech_bubble, dialogue, comic_panel, panels, prose.
 
 **Correct examples:**
 
 ```
-2girls, yuri, intimate_kiss, embracing, faces_pressed_together, both_topless, drool, deep_blush, ecstatic, warm_lighting, bokeh_background
+2girls, yuri, intimate_kiss, embracing, faces_pressed_together, both_topless, drool, deep_blush, ecstatic, warm_lighting, bokeh_background, (((masterpiece,best quality,newest,absurdres,highres)))
 
-1girl, 1boy, hetero, pov, fellatio, tongue_out, licking, looking_up_at_viewer, blissed_out, deep_blush, dim_bedroom, warm_lighting
+1girl, 1boy, hetero, pov, fellatio, tongue_out, licking, looking_up_at_viewer, blissed_out, deep_blush, dim_bedroom, warm_lighting, (((masterpiece,best quality,newest,absurdres,highres)))
 
-1girl, solo, parasite_in_pussy, internal_view, cervix, lying_on_back, swollen_belly, blissed_out, bedroom, warm_lighting
+1girl, solo, parasite_in_pussy, internal_view, cervix, lying_on_back, swollen_belly, blissed_out, bedroom, warm_lighting, (((masterpiece,best quality,newest,absurdres,highres)))
 ```
 
 **Wrong:**
@@ -566,10 +597,50 @@ Key rules enforced:
 ```
 
 **Iteration history:**
-- v1-v5 (2026-05-05): tested various framings — over-long/example-heavy templates produced narrative prose, copy-verbatim outputs, persona echoes
+- v1-v5 (2026-05-05): over-long/example-heavy templates produced narrative prose, copy-verbatim outputs, persona echoes
 - v6: added explicit subject count requirement (fixed 2-girls bug)
-- v7: added action tag gender-prior consistency rule + POV dedup
-- v7.1 (current): softened — dropped consistency-enforcement framing (over-engineered, action tag bias proven downstream of POV stack), kept vocabulary buckets + POV dedup as load-bearing fix
+- v7: added action tag gender-prior consistency rule + POV dedup (over-engineered consistency layer)
+- v7.1: softened — dropped consistency-enforcement (action tag bias proven downstream of POV stack), kept vocabulary buckets + POV dedup
+- v8: added `{{summary}}` macro + 8-section structure + mood-aware artist pool (LLM picks)
+- v8.1: dropped char name slot + artist pool (artist mix LLM-pick produced inconsistent style cross images; aesthetic dial-in not worth the noise — NoobAI baseline coherent enough)
+- **v8.2 (current):** stripped to 5 hard rules. Removed vocabulary buckets, section ordering, mood mapping. Magnum picks tags from booru training. Result: 4258 → 2144 chars, predictable output, simpler debug surface
+
+## 8.1. Summary Workflow (manual via QR button)
+
+Mode 4 template injects `{{summary}}` macro — for it to be useful, the chat summary must be regenerated with Magnum profile (compliant) when scene shifts. Auto-trigger DISABLED (`promptInterval: 0`) because auto-fire uses whatever connection is active at trigger moment → likely DeepSeek → ignores summary directive → produces continuation prose instead of structured recap.
+
+**Manual workflow:** Click `[📝 Summary]` button in ImageGen QR set. STscript chain:
+
+```
+/profile timeout=5000 Magnum — Image Gen | /delay 1000 | /dom action=click "#memory_force_summarize" | /delay 30000 | /profile DeepSeek daily
+```
+
+**Why `/dom action=click` instead of `/summarize`:** /summarize via slash command path silently fails due to STscript executor's `is_send_press` lock — see [gotcha 5.33](#533-stscript-path-silently-breaks-summarize--use-dom-actionclick-workaround-verified-2026-05-05). DOM click on the panel button bypasses the lock entirely.
+
+**Summary prompt** (in `extension_settings.memory.prompt`):
+```
+<task>
+STOP. END OF ROLEPLAY. NEW TASK BEGINS HERE.
+You are no longer {{char}} or any character. You are a structured summarizer.
+Output a recap covering:
+1. Setting · 2. Plot events · 3. Character state · 4. World facts · 5. Open threads
+STRICT: Third-person past tense. NO dialogue. NO prose continuation. Maximum {{words}} words.
+</task>
+```
+
+**Verified output (Magnum + RAW_BLOCKING, 2026-05-05):**
+- ✅ 3rd person past tense
+- ✅ 5 structured sections
+- ✅ ~150-200 words (under limit)
+- ✅ No verbatim dialogue, no RP voice
+
+**Settings stack (all required for compliant summary):**
+| Setting | Value | Why |
+|---|---|---|
+| `prompt_builder` | `1` (RAW_BLOCKING) | Bypass prompt manager — no WI/persona injection that biases Magnum back into RP |
+| `SkipWIAN` | `True` | Belt-and-suspenders alongside RAW_BLOCKING |
+| `promptInterval` | `0` | Disable auto-trigger (would fire on active connection = often DeepSeek = bad output) |
+| `source` | `main` | Use active connection — `/profile` switch via QR controls which |
 
 ---
 
@@ -620,6 +691,9 @@ sd['character_prompts']['Your Oblivious Mother'] = (
 | Mouth/oral anatomy broken in POV blowjob | Extreme close-up active oral exceeds ADetailer | Use side view, anticipation, or aftermath framing instead |
 | Text/speech bubbles in output | Negative missing | Add `text, speech_bubble, dialogue, caption` to negative |
 | Object on wrong body part | SDXL placement limit | Use spatial negative steering or img2img inpaint |
+| Summary textarea stays empty after `/summarize` | STscript executor locks `is_send_press` → /summarize times out silent | Use `/dom action=click "#memory_force_summarize"` (LALib) — see gotcha 5.33 |
+| Summary returns RP prose instead of structured recap | Active connection = DeepSeek (RP-tuned, ignores END ROLEPLAY directive) | Switch to Magnum profile before summary; QR `[📝 Summary]` does it auto |
+| Summary contaminated by persona/WI context | Default `prompt_builder` injects prompt manager content | Set `extension_settings.memory.prompt_builder: 1` (RAW_BLOCKING) |
 
 ---
 
