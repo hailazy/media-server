@@ -272,6 +272,160 @@ extension_settings.memory.promptInterval: 0       # disable auto-trigger
 extension_settings.memory.source: "main"          # uses active connection (binds to QR-controlled profile)
 ```
 
+### 5.34 ST silently overwrites character card PNG when running (verified 2026-05-05)
+
+**The gotcha:** Patching character PNG `tEXt` chunk (CCv3 / V1 chara JSON) WHILE ST is running → patches silently revert. ST holds character cards in memory after load; opening the card UI or any action that triggers card-save event causes ST to write its in-memory (pre-patch) version back to disk, overwriting your changes. No error, no toast — just disappeared.
+
+**Verification (2026-05-05, /st-setup --adv on Parasite):**
+- Step 1: ST running. Patched Parasite.png: description 5325 → 4134 chars, populated personality (165), mes_example (651 → 1767), depth_prompt (382). Read-back verify: ✅ all fields correct.
+- Step 2: User reloaded ST → opened card UI → saw trimmed description ✅
+- Step 3: Some interaction triggered ST card-save → file rewritten with pre-patch in-memory data
+- Step 4: Re-read PNG: description back to 5281 chars (close to original 5325, ST normalized whitespace), personality empty, mes_example back to 651, depth_prompt empty. `.bak` (2000722 bytes) stayed intact.
+
+**Root cause:** Same family as `saveSettingsDebounced` for settings.json. ST treats character cards as live mutable state — UI edits / extension calls / lorebook re-bind events all flow through `saveCharacter()` which writes the in-memory representation, NOT a fresh read from disk.
+
+**Fix (mandatory workflow for PNG patches):**
+```bash
+./scripts/down.sh sillytavern    # stop ST cleanly
+# patch PNG via Python tEXt rewrite
+./scripts/up.sh sillytavern      # restart, ST loads patched data fresh
+```
+
+**Skill enforcement (`/st-setup --adv` Phase 1.5 Step D):**
+- Asserts `'sillytavern' not in podman ps` before patching
+- Aborts if ST detected running
+- Restarts ST after patch
+- Same pattern as Phase 2 settings.json edit (already had this guard)
+
+**Recovery if patch reverted:** `.bak` is one cp away — `cp Parasite.png.bak Parasite.png` (with ST DOWN), then re-run patch.
+
+**Generalizable rule:** Any file ST loads into memory at startup (`settings.json`, `characters/*.png`, possibly `worlds/*.json` under some conditions) requires ST stopped before file-level patching. Lorebook JSON appears safe to edit live in current testing, but consider stopping for any non-trivial multi-file patch.
+
+### 5.35 V2 character cards: must sync V1 mirror fields when patching (verified 2026-05-05)
+
+**The gotcha:** V2 character cards (`spec: chara_card_v2`, `spec_version: 2.0`) store fields TWICE — at top-level root (V1 path: `card.description`) AND inside `data` namespace (V2 path: `card.data.description`). The two paths are mirror copies of the same content. Patching ONLY the V2 path leaves V1 stale → ST frontend reads from V1 → UI shows old data even though `data.X` is patched correctly.
+
+**Verification (2026-05-05, /st-setup --adv on Parasite):**
+- After patch (V2 only), file inspection:
+  - `card.description`: 5281 chars (UNCHANGED, original)
+  - `card.data.description`: 4134 chars (patched ✓)
+  - `card.personality`: 0 chars (UNCHANGED, empty)
+  - `card.data.personality`: 165 chars (patched ✓)
+  - `card.mes_example`: 651 chars (UNCHANGED, old)
+  - `card.data.mes_example`: 1767 chars (patched ✓)
+- UI displayed V1 data (untrimmed description, empty personality, old 3-example dialogue)
+- Hard reload + cache clear + char re-select did nothing — because the file genuinely had old V1 data
+
+**Why two paths exist:** Backwards compatibility. Older clients (pre-spec_v2) read top-level fields. ST exporters write both paths to ensure cards work in both ecosystems. ST frontend reads V1 paths first (legacy code path).
+
+**Fix:** Always sync V1 ↔ V2 fields when patching V2 cards.
+
+```python
+if 'data' in card:
+    card['data'] = d  # V2 update
+    # Sync V1 mirror fields
+    for field in ['description', 'personality', 'scenario', 'mes_example', 'first_mes']:
+        if field in d:
+            card[field] = d[field]
+else:
+    card = d  # V1-only card (rare/legacy)
+```
+
+**Verification one-liner (after patching):**
+```python
+assert card['description'] == card['data']['description']
+assert card['personality'] == card['data']['personality']
+assert card['mes_example'] == card['data']['mes_example']
+```
+
+**Affected fields with V1 mirrors:** `description`, `personality`, `scenario`, `mes_example`, `first_mes`. Fields ONLY in V2 (no V1 mirror): `creator_notes`, `system_prompt`, `post_history_instructions`, `alternate_greetings`, `tags`, `creator`, `character_version`, `extensions`, `character_book`. These don't need sync.
+
+**Skill enforcement (`/st-setup --adv` Phase 1.5 Step D):** dual-write loop added.
+
+### 5.36 ST disk cache is the source of truth — PNG patches alone are invisible to UI (verified 2026-05-05)
+
+**The gotcha:** ST treats character PNG as **export-only** format. The actual data UI reads from comes from `data/_cache/characters/<sha256>` JSON files. Patches to PNG file alone never reach UI because the data flow is one-directional: UI → write to both PNG + cache; file changes → readCharacterData reads cache first (line 182 `endpoints/characters.js`):
+
+```javascript
+async function readCharacterData(inputFile) {
+    const cacheKey = `${inputFile}-${stat.mtimeMs}`;
+    if (memoryCache.has(cacheKey)) return memoryCache.get(cacheKey);
+    if (useDiskCache) {
+        const cachedData = await cache.getItem(cacheKey);
+        if (cachedData) return cachedData;
+    }
+    return await parse(inputFile);  // ← only on cache miss
+}
+```
+
+Even after restart + cache nuke, the next ST start may regenerate cache from internal state (not from re-parsing PNG) — exact mechanism unclear but verified empirically.
+
+**User's diagnosis (correct):** *"patch chỉ hoạt động một chiều từ UI → image chứ không phải ngược lại"* — patches only flow UI → file, not file → UI.
+
+**Verification (2026-05-05):**
+- Patched Parasite.png: V1+V2 both = trimmed 4134 chars, personality/mes_example/depth_prompt populated
+- Stopped ST → patched PNG → nuked 44 stale cache entries → restarted ST
+- ST recreated 1 cache entry — but with **STALE data** (5281 chars, "persuasive abilities" present, personality empty)
+- `/characters/Parasite.png` HTTP endpoint correctly served patched 2001158-byte PNG → ST IS aware of patched file
+- But UI rendered cache content = stale
+- **Fix that worked**: stopped ST → manually patched cache file's `value` field with patched JSON → restarted ST → UI rendered patched data ✓
+
+**Correct fix workflow (4 steps, both PNG + cache patched):**
+
+```bash
+./scripts/down.sh sillytavern
+```
+
+```python
+import struct, base64, json, zlib, os, re
+
+PNG_PATH = f"{ST_DATA}/characters/{char_name}.png"
+CACHE_DIR = f"{ST_DATA}/_cache/characters"
+
+# 1) Patch PNG (for V1+V2 field sync — keeps PNG export-correct)
+# ... (existing tEXt chunk rewrite + V1+V2 sync) ...
+
+# 2) Patch the cache file's value field
+target_cache = None
+for fname in os.listdir(CACHE_DIR):
+    fpath = os.path.join(CACHE_DIR, fname)
+    try:
+        with open(fpath) as f: outer = json.load(f)
+        if f"{char_name}.png" in outer.get('key', ''):
+            target_cache = (fpath, outer)
+            break
+    except: pass
+
+if target_cache is None:
+    # No cache yet — create one with current PNG mtime
+    mtime_ms = os.path.getmtime(PNG_PATH) * 1000
+    cache_key = f"data/default-user/characters/{char_name}.png-{mtime_ms}"
+    # Use sha256 of cache_key as filename (need to verify actual ST hash function)
+    import hashlib
+    fname = hashlib.sha256(cache_key.encode()).hexdigest()
+    target_cache = (os.path.join(CACHE_DIR, fname), {'key': cache_key, 'value': ''})
+
+cache_path, cache_outer = target_cache
+cache_outer['value'] = json.dumps(patched_card, ensure_ascii=False)
+with open(cache_path, 'w') as f:
+    json.dump(cache_outer, f, ensure_ascii=False)
+print(f"✓ Patched cache: {cache_path}")
+```
+
+```bash
+./scripts/up.sh sillytavern
+```
+
+**Skipping cache patch = PNG patch invisible to UI.**
+
+**Other ST persistent caches to be aware of:**
+- `data/_cache/deepseek.json`, `qwen2.json` — tokenizer caches (irrelevant for char patches)
+- `data/_cache/Cohee/` — user-namespaced cache (similar disk cache for other users)
+- `data/default-user/thumbnails/avatar/<char>.png` — visual avatar thumbnail only (no card data, safe)
+- `data/default-user/image-metadata.json` — file hash + dimension metadata (no card data, safe)
+
+**Related ST source paths:** `/home/node/app/src/endpoints/characters.js:166-209` (cache + readCharacterData), `:38-159` (DiskCache class).
+
 ### 5.31 Niche fetish genres = Parasite RP arc support
 NoobAI XL has strong training for niche hentai fetish genres. All verified at ⭐⭐⭐⭐ to ⭐⭐⭐⭐⭐.
 
