@@ -426,6 +426,191 @@ print(f"✓ Patched cache: {cache_path}")
 
 **Related ST source paths:** `/home/node/app/src/endpoints/characters.js:166-209` (cache + readCharacterData), `:38-159` (DiskCache class).
 
+### 5.37 Magnum Mode 4 image-prompt extraction retired (2026-05-06)
+
+**Decision:** Replaced Magnum 72B (RAW_BLOCKING) Mode 4 prompt extraction with Claude skill `/st-gen-image-prompt`. Magnum profile chỉ còn cần cho `/summarize` compliance (gotcha 5.33).
+
+**Rationale:**
+- Magnum context cứng 16K → chỉ thấy `{{summary}}` + last message → output thiếu ổn định, sai tag, hallucination POV stacking, drift khỏi scene thực tế
+- Đã iterate template từ v1 → v8.2 (4258 → 2144 chars, 5 hard rules) — vẫn chưa đủ tin cậy
+- Claude (Opus 4.7, 1M context) đọc full chat — instruction-following mạnh hơn cho structured output
+- Tách prompt-eng khỏi RP loop → dễ debug, dễ iterate
+
+**Workflow change:**
+1. User runs `/st-gen-image-prompt [CharName]` trong Claude Code
+2. Skill đọc chat last N msgs + char card + persona + identity baseline → generate booru tags
+3. Tags verified qua Danbooru DB (~5MB lazy fetch vào `~/.cache/st-gen-image-prompt/`)
+4. User copy → paste vào ST input → click `🎨 Freestyle` button
+5. ST forwards qua Forge với pass-through Mode FREE (no LLM processing)
+
+**QR cleanup (ImageGen.json):**
+- Removed: 📷 Scene, 👤 Char, 😊 Face, 🎭 Imp (Magnum-dependent)
+- Kept: 🌅 BG (Mode 7 still LLM-handled), 📝 Summary (Magnum compliance)
+- Added: 🎨 Freestyle (`/sd {{input}}` pass-through)
+
+### 5.38 char_prompts emptied + Mode 0/1/2/4/5 templates emptied (2026-05-06)
+
+Migrated SD config to skill-controlled prompts:
+
+**character_prompts**: emptied for all chars. Identity baselines moved to `~/.claude/skills/st-gen-image-prompt/data/identity-baselines/<CharName>.txt`. Skill injects identity per-scene (skip for BG-only, skip outfit for bath/nude scenes).
+
+**Mode templates emptied** (no longer used since skill provides full prompt):
+- prompts["0"] CHARACTER (1289 → 0)
+- prompts["1"] USER (827 → 0)
+- prompts["2"] SCENARIO (1456 → 0)
+- prompts["4"] NOW (2264 → 0, was v8.2 production)
+- prompts["5"] FACE (1282 → 0)
+
+**Kept intact:**
+- prompts["7"] BACKGROUND (1259 chars) — BG button still LLM-handled via Mode 7
+- prompts["8-11"] multimodal (caption modes) — separate use case
+- prompts["-1", "-2", "3"] meta — internal
+- character_negative_prompts — universal filter (muscular, child, schoolgirl, etc.) auto-prepended by ST
+- All production sampler/CFG/HR settings (Euler, Karras, 35 steps, CFG 5, hr_scale 1.5) — verified, untouched
+
+**Backup**: `settings.json.bak.pre-magnum-retire`. Restore = 1 cp.
+
+**Critical**: Skill output MUST inject identity baseline cho char-present scenes — without it, Naoko regenerates as schoolgirl in 2-3 gens (gotcha 5.3 mature lock-in still applies).
+
+### 5.39 `/sd <prompt>` defaults to Mode FREE (pass-through) — no LLM extraction
+
+Verified in ST source `public/scripts/extensions/stable-diffusion/index.js`:
+
+```javascript
+const generationMode = {
+    TOOL: -2, MESSAGE: -1, CHARACTER: 0, USER: 1, SCENARIO: 2,
+    RAW_LAST: 3, NOW: 4, FACE: 5, FREE: 6, BACKGROUND: 7,
+    CHARACTER_MULTIMODAL: 8, USER_MULTIMODAL: 9,
+    FACE_MULTIMODAL: 10, FREE_EXTENDED: 11,
+};
+
+function getGenerationType(prompt) {
+    let mode = generationMode.FREE;  // default
+    for (const [key, values] of Object.entries(triggerWords)) {
+        for (const value of values) {
+            if (value.toLowerCase() === prompt.toLowerCase().trim()) {
+                mode = Number(key);
+                break;
+            }
+        }
+    }
+    // ... (multimodal + free_extend overrides)
+    return mode;
+}
+
+const triggerWords = {
+    [generationMode.CHARACTER]: ['you'],
+    [generationMode.USER]: ['me'],
+    [generationMode.SCENARIO]: ['scene'],
+    [generationMode.RAW_LAST]: ['raw_last'],
+    [generationMode.NOW]: ['last'],
+    [generationMode.FACE]: ['face'],
+    [generationMode.BACKGROUND]: ['background'],
+};
+```
+
+**Behavior:**
+- `/sd you` / `/sd last` / `/sd face` / `/sd background` / `/sd scene` / `/sd me` / `/sd raw_last` → match trigger → LLM-extract prompt qua Mode template
+- `/sd <anything else>` → no match → Mode FREE = 6 → **pure pass-through**, no LLM call
+
+**Implication for QR `🎨 Freestyle` button:**
+- Message: `/sd {{input}}` (NOT `/sd freestyle {{input}}` — `freestyle` không phải trigger word, chỉ là tên đặt cho button)
+- User pastes booru tags → ST sends raw tags + prompt_prefix + character_prompts (empty) + character_negative_prompts → Forge
+
+**Edge case**: nếu user paste prompt mà text trùng exact một trigger word (vd `/sd "you"`) → mode chuyển CHARACTER (LLM-process). Nhưng `value.toLowerCase() === prompt.toLowerCase().trim()` là EXACT match — paste full booru prompt không bao giờ collide.
+
+### 5.40 ADetailer hand_yolov8n.pt enabled via ST patch (2026-05-06)
+
+**The gotcha:** ST source `index.js:3831` hardcoded chỉ gửi `face_yolov8n.pt` trong alwayson_scripts.ADetailer.args. Để add hand model phải bind-mount patched index.js — ST không expose `adetailer_hand` setting.
+
+**Fix applied:**
+
+1. Copy ST source: `podman cp home-sillytavern:/home/node/app/public/scripts/extensions/stable-diffusion/index.js sillytavern/patches/sd-index.js`
+2. Patch payload (line 3835-3845): args array thêm hand model dict + explicit confidence/denoising:
+   ```js
+   args: [
+       true, true,
+       { 'ad_model': 'face_yolov8n.pt', 'ad_confidence': 0.3, 'ad_denoising_strength': 0.4 },
+       { 'ad_model': 'hand_yolov8n.pt', 'ad_confidence': 0.3, 'ad_denoising_strength': 0.4 },
+   ]
+   ```
+3. Bind mount in `sillytavern/compose.yml`:
+   ```yaml
+   volumes:
+     - ./data:/home/node/app/data:z
+     - ./patches/sd-index.js:/home/node/app/public/scripts/extensions/stable-diffusion/index.js:ro,z
+   ```
+4. Forge `ui-config.json`: `txt2img/ADetailer detector 2nd/value` = `"hand_yolov8n.pt"` (UI default)
+5. Restart ST + Forge
+
+**Verification (2026-05-06):**
+- API smoke test: payload với 2 models → HTTP 200 21s, metadata returns `ADetailer confidence 2nd: 0.3, denoising strength 2nd: 0.4` for both slots
+- Hands giờ được second-pass inpaint mỗi gen → finger anatomy fixed automatically
+
+**Tradeoffs:**
+- Patch sẽ break nếu ST upgrade thay đổi block `if (extension_settings.sd.adetailer_face)`. Khi update SillyTavern image, re-copy index.js và re-patch
+- Total gen time +5-8s per image (hand pass adds ~1 inpaint step at base resolution)
+- Confidence 0.3 = aggressive detection. Higher 0.5+ = miss small/blurry hands. Lower 0.2 = false positives on background details
+- Denoising 0.4 = safe sweet spot. >0.6 destroys hand identity (skin tone/length drift)
+
+**Related**: gotcha 5.x ADetailer face setup (already auto-via `adetailer_face: true`). With this patch, BOTH passes fire automatically per gen.
+
+### 5.41 Forge launch args — drop `--cuda-malloc / --cuda-stream / --pin-shared-memory` for 16GB+ cards (2026-05-06)
+
+3 args added by ai-dock image template chỉ có gain cho low-VRAM cards (6-8GB):
+- `--cuda-malloc`: ~0.1s/image gain, can crash randomly per Forge maintainer warning
+- `--cuda-stream`: 15-25% speed for SDXL on 6-8GB. 16GB không gain.
+- `--pin-shared-memory`: VRAM tradeoff helpful for low-VRAM. 16GB không cần.
+
+For RTX 4070 Ti SUPER 16GB, lean to: `--listen --api --xformers --ui-settings-file ... --ui-config-file ...`. Same speed, no random crash risk.
+
+### 5.43 Forge InputAccordion master toggles không persist qua container restart (2026-05-07)
+
+**The gotcha:** `Hires. fix` và `ADetailer` master enable checkbox dùng `InputAccordion` component. Khi check trong UI rồi click "Settings → Defaults → Apply", Forge ghi `txt2img/Hires. fix/value: True` + `customscript/!adetailer.py/txt2img/ADetailer/value: True` vào `ui-config.json`. NHƯNG khi container restart, ui_loadsave đọc lại file và `setattr(component, value, True)` SAU khi gradio đã render từ constructor's hardcoded `value=False` → checkbox về unchecked.
+
+**Why reload browser không mất state:** Forge process vẫn running, component runtime memory intact, tab reconnect → state still there. Container restart kills process → RAM wiped → init từ source code hardcoded defaults.
+
+**Symptom:** sau mỗi restart, Hai phải tự click ADetailer enable + Hires fix enable lại (irritating cho manual UI gen). ST API workflow KHÔNG bị ảnh hưởng vì alwayson_scripts payload có `ad_enable: true` override.
+
+**Fix:** Source patch — change `InputAccordion(False, ...)` → `InputAccordion(True, ...)`.
+
+```bash
+# 1. ADetailer (extension đã bind-mounted via data/forge/extensions/)
+podman unshare sed -i 's/value=False,$/value=True,/' \
+  /home/haint/Projects/home-server/forge/data/forge/extensions/adetailer/aaaaaa/ui.py
+# Line 132: with InputAccordion(value=True, ...) wrapping ADetailer master toggle
+
+# 2. Forge core ui.py (không bind, cần copy + bind mount)
+mkdir -p /home/haint/Projects/home-server/forge/patches
+podman cp home-forge:/opt/stable-diffusion-webui-forge/modules/ui.py \
+  /home/haint/Projects/home-server/forge/patches/ui.py
+# Edit line 329: InputAccordion(False, label="Hires. fix", ...) → InputAccordion(True, ...)
+```
+
+Add bind mount trong `forge/compose.yml` volumes section:
+```yaml
+- ./patches/ui.py:/opt/stable-diffusion-webui-forge/modules/ui.py:ro,z
+```
+
+**Verification (2026-05-07):** Forge restart → reload browser tab → Hires fix + ADetailer master toggle default-checked. Persist qua mọi restart.
+
+**Tradeoffs:**
+- Patch break nếu Forge upgrade thay đổi block. Khi `./scripts/update.sh` pull new image, re-copy + re-patch.
+- ADetailer extension upgrade (rare) cũng cần re-patch — extension folder mounted, sed edit gets overwritten only if user manually re-installs ADetailer.
+
+### 5.42 Forge UI config persistence (2026-05-06)
+
+**The gotcha:** `config.json` + `ui-config.json` ở root webui dir (`/opt/stable-diffusion-webui-forge/`) KHÔNG nằm trong default bind mounts (which only cover `models/`, `embeddings/`, `outputs/`, `extensions/`, `config/` subdir). Settings (ADetailer panels, sampler defaults, hires defaults) reset mỗi container restart.
+
+**Fix:** redirect via CLI flags trong `forge_args.conf`:
+```
+--ui-settings-file /opt/stable-diffusion-webui-forge/config/config.json
+--ui-config-file /opt/stable-diffusion-webui-forge/config/ui-config.json
+```
+Container's `config/` is mounted (`./data/forge/config:/opt/stable-diffusion-webui-forge/config:z`), so files written there persist.
+
+Migration step: `podman cp home-forge:/opt/.../config.json` ra host trước khi áp dụng (otherwise Forge starts với empty config and overrides defaults).
+
 ### 5.31 Niche fetish genres = Parasite RP arc support
 NoobAI XL has strong training for niche hentai fetish genres. All verified at ⭐⭐⭐⭐ to ⭐⭐⭐⭐⭐.
 

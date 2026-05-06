@@ -17,8 +17,10 @@ services:
       - ./data/forge/extensions:/opt/stable-diffusion-webui-forge/extensions:z
       - ./data/forge/config:/opt/stable-diffusion-webui-forge/config:z
       - ./forge_args.conf:/etc/forge_args.conf:z,ro
+      # Patch: Hires fix master InputAccordion default True (gotcha 5.43 — 2026-05-07)
+      - ./patches/ui.py:/opt/stable-diffusion-webui-forge/modules/ui.py:ro,z
     environment:
-      - WEBUI_FLAGS=--api --xformers --cuda-malloc --cuda-stream --pin-shared-memory
+      - WEBUI_FLAGS=--api --xformers
       - TZ=Asia/Ho_Chi_Minh
       - NVIDIA_VISIBLE_DEVICES=all
       - WEB_ENABLE_AUTH=false

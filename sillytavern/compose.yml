@@ -7,6 +7,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/home/node/app/data:z
+      # Patch: ST adetailer payload to include hand_yolov8n.pt (gotcha 5.40 — 2026-05-06)
+      - ./patches/sd-index.js:/home/node/app/public/scripts/extensions/stable-diffusion/index.js:ro,z
     environment:
       - NODE_ENV=production
       - TZ=Asia/Ho_Chi_Minh

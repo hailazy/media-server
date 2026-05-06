@@ -68,6 +68,8 @@ After media stack is configured: upgrade Homarr tiles from plain "App" to specia
 - **Bind mount ownership:** Container UIDs map through subuid; use `podman unshare` for file ops on container-owned dirs (e.g., moving model files, tar/untar backups)
 - **Forge forge_args.conf:** controls launch flags, NOT just `WEBUI_FLAGS` env var alone (ai-dock image quirk)
 - **Forge ai-dock image stale:** vpred models broken (Zero Terminal SNR ignored); stick with epsilon-prediction checkpoints
+- **Forge UI config persistence:** `config.json` + `ui-config.json` ở root webui dir KHÔNG nằm trong bind mount mặc định → ADetailer/sampler/UI defaults reset mỗi restart. Fix: `forge_args.conf` thêm `--ui-settings-file /opt/stable-diffusion-webui-forge/config/config.json --ui-config-file /opt/stable-diffusion-webui-forge/config/ui-config.json` để webui ghi vào mounted `data/forge/config/` thay vì root. Áp dụng 2026-05-06.
+- **Forge InputAccordion master toggles:** `Hires. fix` + `ADetailer` enable checkbox không persist qua container restart dù Forge ghi đúng vào ui-config.json (gradio render từ hardcoded `value=False` constructor, setattr post-render không reflect). Fix: source patch — `forge/patches/ui.py` bind-mounted thay `modules/ui.py` (line 329 đổi `InputAccordion(False, ...)` → `True`), + sed edit `data/forge/extensions/adetailer/aaaaaa/ui.py` line 132 `value=False` → `value=True`. Re-patch khi Forge image hoặc ADetailer extension upgrade. 2026-05-07.
 
 ## Security
 **CRITICAL**: NEVER commit, push, or expose secrets, API keys, tokens, or credentials.
