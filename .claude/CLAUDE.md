@@ -29,6 +29,7 @@ Home server orchestrating self-hosted personal services. Single repo, modular se
 - Dashboard backup/restore: `./scripts/dashboard-backup.sh` / `./scripts/dashboard-restore.sh <backup.tar.gz>`
 - Pre-flight: GPU CDI auto-regen for media+forge (handled by `scripts/_lib.sh`)
 - VRAM guard: `scripts/vram-guard.sh check <section>` runs before GPU-using sections start
+- **Claude Code wrapper**: `./scripts/claude.sh` — sources `.env` (Civitai API key, etc.) before launching Claude Code. Required for project-scoped MCP servers (`.mcp.json`) that reference `${ENV_VAR}` from shell environment
 
 ### System tray (KDE Plasma)
 - `scripts/tray.py` — PyQt6 tray indicator with dynamic state-aware menu
@@ -70,6 +71,7 @@ After media stack is configured: upgrade Homarr tiles from plain "App" to specia
 - **Forge ai-dock image stale:** vpred models broken (Zero Terminal SNR ignored); stick with epsilon-prediction checkpoints
 - **Forge UI config persistence:** `config.json` + `ui-config.json` ở root webui dir KHÔNG nằm trong bind mount mặc định → ADetailer/sampler/UI defaults reset mỗi restart. Fix: `forge_args.conf` thêm `--ui-settings-file /opt/stable-diffusion-webui-forge/config/config.json --ui-config-file /opt/stable-diffusion-webui-forge/config/ui-config.json` để webui ghi vào mounted `data/forge/config/` thay vì root. Áp dụng 2026-05-06.
 - **Forge InputAccordion master toggles:** `Hires. fix` + `ADetailer` enable checkbox không persist qua container restart dù Forge ghi đúng vào ui-config.json (gradio render từ hardcoded `value=False` constructor, setattr post-render không reflect). Fix: source patch — `forge/patches/ui.py` bind-mounted thay `modules/ui.py` (line 329 đổi `InputAccordion(False, ...)` → `True`), + sed edit `data/forge/extensions/adetailer/aaaaaa/ui.py` line 132 `value=False` → `value=True`. Re-patch khi Forge image hoặc ADetailer extension upgrade. 2026-05-07.
+- **Civitai MCP project-scoped:** `.mcp.json` ở root references `${CIVITAI_API_KEY}` (committable, no secret). Key sống trong `.env` (gitignored, mode 600). MUST launch Claude Code qua `./scripts/claude.sh` để source `.env` trước khi spawn — plain `claude` sẽ thấy env var rỗng, MCP server fail auth. Skill `/civitai-model` (project-scoped tại `.claude/skills/civitai-model/`) dùng MCP để search/download/prompt-mine vào Forge paths. 2026-05-07.
 
 ## Security
 **CRITICAL**: NEVER commit, push, or expose secrets, API keys, tokens, or credentials.

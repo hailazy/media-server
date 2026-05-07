@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "civitai": {
+      "command": "/home/haint/.local/bin/civitai-mcp-ultimate",
+      "args": [],
+      "env": {
+        "CIVITAI_API_KEY": "${CIVITAI_API_KEY}"
+      }
+    }
+  }
+}
