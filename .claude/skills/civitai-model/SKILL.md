@@ -16,7 +16,7 @@ FORGE_LORA_PATH    = /home/haint/Projects/home-server/forge/data/forge/models/Lo
 FORGE_CKPT_PATH    = /home/haint/Projects/home-server/forge/data/forge/models/Stable-diffusion
 FORGE_EMB_PATH     = /home/haint/Projects/home-server/forge/data/forge/embeddings
 FORGE_VAE_PATH     = /home/haint/Projects/home-server/forge/data/forge/models/VAE
-DEFAULT_BASE_MODEL = "SDXL 1.0"
+DEFAULT_BASE_MODEL = "NoobAI"  # active stack base. Valid: NoobAI, Illustrious, Pony, SDXL 1.0, Flux.1 D, etc. — call mcp__civitai__get_enums for full list
 ```
 
 **Civitai → Forge type mapping:**
@@ -59,9 +59,9 @@ If unrecognized → display usage line from frontmatter and exit.
 ### Steps
 
 1. **Dispatch tool call** based on subcommand:
-   - `search <query>` → `mcp__civitai__search_models(query=<q>, baseModel="SDXL 1.0", nsfw=true, limit=15)`
-   - `top-loras [base]` → `mcp__civitai__get_top_loras(baseModel=<base or "SDXL 1.0">, limit=15)`
-   - `top-checkpoints [base]` → `mcp__civitai__get_top_checkpoints(baseModel=<base or "SDXL 1.0">, limit=15)`
+   - `search <query>` → `mcp__civitai__search_models(query=<q>, baseModel="NoobAI", nsfw=true, limit=15)`
+   - `top-loras [base]` → `mcp__civitai__get_top_loras(baseModel=<base or "NoobAI">, limit=15)`
+   - `top-checkpoints [base]` → `mcp__civitai__get_top_checkpoints(baseModel=<base or "NoobAI">, limit=15)`
 
 2. **Format result table**:
    ```
