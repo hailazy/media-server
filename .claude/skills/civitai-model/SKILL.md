@@ -2,7 +2,7 @@
 name: civitai-model
 description: "Search, download, and mine prompts from Civitai for Forge"
 argument-hint: "search <query> | top-loras [base] | top-checkpoints [base] | download <id> [--version <vid>] | prompts <id> [--top N]"
-allowed-tools: Bash, AskUserQuestion, mcp__civitai__search_models, mcp__civitai__get_model, mcp__civitai__get_model_version, mcp__civitai__get_model_version_mini, mcp__civitai__get_top_loras, mcp__civitai__get_top_checkpoints, mcp__civitai__get_model_images, mcp__civitai__get_image_generation_data, mcp__civitai__get_download_url, mcp__civitai__get_download_info, mcp__civitai__get_tags, mcp__civitai__get_creators, mcp__civitai__get_enums, mcp__civitai__get_current_user
+allowed-tools: Bash, AskUserQuestion, mcp__civitai__search_models, mcp__civitai__get_model, mcp__civitai__get_model_version, mcp__civitai__get_model_version_mini, mcp__civitai__get_model_versions_by_hashes, mcp__civitai__get_top_loras, mcp__civitai__get_top_checkpoints, mcp__civitai__get_model_images, mcp__civitai__get_image_generation_data, mcp__civitai__get_download_url, mcp__civitai__get_download_info, mcp__civitai__get_tags, mcp__civitai__get_creators, mcp__civitai__lookup_users, mcp__civitai__get_enums, mcp__civitai__get_current_user, mcp__civitai__check_permissions
 ---
 
 # Civitai Model — Search, Download, Mine Prompts for Forge
@@ -100,6 +100,10 @@ If unrecognized → display usage line from frontmatter and exit.
    - Pick version: latest by default, or matching `--version`
 
 2. **Determine target path** (from constants table above). If `type` không match table → ask user where to save.
+
+2.5. **Check access gate**: `mcp__civitai__check_permissions(version_ids=[<vid>])`
+   - Returns `{<vid>: true/false}` per version. If `false` → version is gated (early access / membership required) → STOP, inform user, suggest a different version từ `get_model` output. Skip step 3-7.
+   - If `true` → proceed.
 
 3. **Get download info**: `mcp__civitai__get_download_info(model_id=<id>, version_id=<vid>)`
    - Returns: filename, file size, hash, download URL with auth template
