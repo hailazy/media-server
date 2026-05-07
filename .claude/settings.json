@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "mcp__civitai__*"
+      "mcp__civitai__*",
+      "Bash(curl*civitai.com/api/download/models/*)",
+      "Bash(podman unshare*civitai.com/api/download/models/*)"
     ]
   },
   "enableAllProjectMcpServers": true

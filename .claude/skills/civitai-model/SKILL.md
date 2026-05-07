@@ -120,14 +120,17 @@ If unrecognized → display usage line from frontmatter and exit.
    - Q: "Proceed with download?"
    - Options: "Download now" / "Cancel"
 
-6. **On confirm**, run:
+6. **On confirm**, run inside `podman unshare` (REQUIRED — Forge model dirs owned by container subuid 525287, host user `haint` cannot write directly):
    ```bash
-   curl -L --fail --create-dirs --progress-bar \
-     -H "Authorization: Bearer ${CIVITAI_API_KEY}" \
-     "<download_url>" \
-     -o "<target_path>/<filename>"
+   set -a; source /home/haint/Projects/home-server/.env; set +a
+   podman unshare bash -c "
+     curl -L --fail --create-dirs \
+       -H 'Authorization: Bearer \$CIVITAI_API_KEY' \
+       '<download_url>' \
+       -o '<target_path>/<filename>'
+   "
    ```
-   Run as host user `haint` — Forge bind-mount maps via subuid (gotcha: container UID 1000 ↔ host subuid 525287). Files written by `haint` are readable by Forge.
+   Inside `podman unshare`, host user maps to namespace root → writes appear as container UID 1000 on host (subuid 525287). Forge reads natively. **Plain `curl` from host user fails with exit 23 (write error)** — verified 2026-05-07.
 
 7. **Verify**:
    - File exists + size matches metadata (within 1% tolerance for HTTP overhead)
