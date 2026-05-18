@@ -1,0 +1,23 @@
+[project]
+name = "imagegen"
+version = "0.1.0"
+description = "Shared provider-pluggable cloud image-gen core with content-hash cache + cost ledger"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "haint", email = "thanhhai9x98@gmail.com" }
+]
+dependencies = [
+    # PINNED — this is the SDK churn surface this tool exists to contain.
+    # 2.36.0 is brain-verified (memory 83769887d0a6, 2026-05-14) for the
+    # images.generate vs images.edit signature split. Read README "Gotchas"
+    # before bumping; re-verify BOTH call paths.
+    "openai==2.36.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+imagegen = "imagegen.cli:main"

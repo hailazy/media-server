@@ -38,6 +38,7 @@ Hardware/performance docs specific to the media stack:
   - `vram-guard.sh` — VRAM budgeting between Forge and Jellyfin (16GB ceiling on RTX 4070 Ti SUPER)
   - `dashboard-backup.sh` / `dashboard-restore.sh` — Homarr SQLite snapshot
   - `_lib.sh` — shared logging, GPU CDI auto-regen, network helpers
+- **`imagegen/`** — shared **cloud** image-gen CLI (GPT Image 2) with content-hash cache + cost ledger, consumed by repo skills (IC concept-gen today). The cloud counterpart to `forge/` (local). Contract + extension guide: [`imagegen/README.md`](../imagegen/README.md).
 - **`AGENTS.md`** + **`.claude/CLAUDE.md`** — AI-agent operating instructions for this repo.
 
 ## Role-based quick paths
