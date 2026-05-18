@@ -469,6 +469,36 @@ NEG = "lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark,
 
 EMOTIONS = list(EMOTION_TAGS.keys())
 
+# --- Face-scoped identity (expression sprites are about the FACE) ---
+# Build FACE_ID from the full identity baseline by KEEPING only face-identity
+# tags and DROPPING composition-hostile ones. Validated 2026-05-18: a body/NSFW
+# -heavy baseline pulls the crop onto the chest and a baked-in expression
+# (light_smile, tongue_out…) overrides every per-emotion tag → all 28 sprites
+# collapse into the same non-expressive shot. Face-scoping fixes this at the
+# prompt layer; no seed/img2img/cloud trick does.
+#   KEEP : subject count (1girl/1boy), ethnicity, age class (mature_female/
+#          milf/teen…), skin tone, hair (color/length/style), eye color,
+#          permanent facial features (mole/freckles/glasses/heterochromia)
+#   DROP : breasts/body size, clothing & clothing-state (no_bra/nude/dress…),
+#          body atmosphere (sweat/steaming_body/wet), role/occupation, pose,
+#          and ANY baked-in expression (smile/tongue_out/blush/…).
+#          Omit looking_at_viewer here — the prompt template below adds it.
+# Worked example — Parasite full baseline:
+#   "1girl, japanese, mature_female, milf, housewife, plump, huge_breasts,
+#    no_bra, no_panties, steaming_body, sweat, fair_skin, long_black_hair,
+#    looking_at_viewer, tongue_out, light_smile"
+#   → FACE_ID = "1girl, japanese, mature_female, milf, fair_skin, long_black_hair"
+FACE_ID = ...  # ← derive from CHAR_BASELINE by applying the KEEP/DROP rule above
+
+# Fixed seed → cross-sprite identity lock. Validated 2026-05-18: random -1
+# drifts/degenerates the set; one constant seed across the whole batch keeps
+# the same person. Post face-scoping the seed VALUE is framing-neutral (the
+# prompt no longer fights the crop) — any constant works; what matters is it
+# is identical for all 28. 12345 is the validated default; override per
+# character only when a specific roll is wanted.
+CHAR_SEED = 12345
+print(f"FACE_ID = {FACE_ID}\nSeed (fixed): {CHAR_SEED}")
+
 for i, emotion in enumerate(EMOTIONS):
     outfile = f"{CHAR_DIR}/{emotion}.png"
     
@@ -479,7 +509,7 @@ for i, emotion in enumerate(EMOTIONS):
         continue
     
     tags = EMOTION_TAGS[emotion]
-    prompt = f"{CHAR_BASELINE}, portrait, close-up, face_focus, looking_at_viewer, {tags}, masterpiece, best quality, newest, absurdres, highres, soft_lighting, detailed_face"
+    prompt = f"{FACE_ID}, portrait, close-up, face_focus, looking_at_viewer, {tags}, masterpiece, best quality, newest, absurdres, highres, soft_lighting, detailed_face"
     
     payload = {
         "prompt": prompt,
@@ -490,7 +520,7 @@ for i, emotion in enumerate(EMOTIONS):
         "cfg_scale": 5,
         "width": 512,
         "height": 768,
-        "seed": -1,
+        "seed": CHAR_SEED,
         "enable_hr": False,  # no hires for speed
     }
     
