@@ -452,7 +452,7 @@ print(f"✓ Patched cache: {cache_path}")
 
 Migrated SD config to skill-controlled prompts:
 
-**character_prompts**: emptied for all chars. Identity baselines moved to `~/.claude/skills/st-gen-image-prompt/data/identity-baselines/<CharName>.txt`. Skill injects identity per-scene (skip for BG-only, skip outfit for bath/nude scenes).
+**character_prompts**: emptied for all chars. Identity baselines moved to `~/Projects/home-server/.claude/skills/st-gen-image-prompt/data/identity-baselines/<CharName>.txt`. Skill injects identity per-scene (skip for BG-only, skip outfit for bath/nude scenes).
 
 **Mode templates emptied** (no longer used since skill provides full prompt):
 - prompts["0"] CHARACTER (1289 → 0)
