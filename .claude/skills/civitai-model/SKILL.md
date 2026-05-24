@@ -59,9 +59,11 @@ If unrecognized → display usage line from frontmatter and exit.
 ### Steps
 
 1. **Dispatch tool call** based on subcommand:
-   - `search <query>` → `mcp__civitai__search_models(query=<q>, baseModel="NoobAI", nsfw=true, limit=15)`
-   - `top-loras [base]` → `mcp__civitai__get_top_loras(baseModel=<base or "NoobAI">, limit=15)`
-   - `top-checkpoints [base]` → `mcp__civitai__get_top_checkpoints(baseModel=<base or "NoobAI">, limit=15)`
+   - `search <query>` → `mcp__civitai__search_models(query=<q>, base_model="NoobAI", nsfw=true, limit=15)`
+   - `top-loras [base]` → `mcp__civitai__get_top_loras(base_model=<base or "NoobAI">, nsfw=true, limit=15)`
+   - `top-checkpoints [base]` → `mcp__civitai__get_top_checkpoints(base_model=<base or "NoobAI">, limit=15)`
+
+   **Note:** civitai MCP tool params are snake_case (`base_model`, not `baseModel`). NoobAI base requires explicit `base_model="NoobAI"` — default of these tools is `"SDXL 1.0"`. `get_top_checkpoints` doesn't accept `nsfw` (always returns full set; filter on display side if needed).
 
 2. **Format result table**:
    ```

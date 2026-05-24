@@ -29,12 +29,56 @@ mcp = FastMCP(
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
+def _parse_path(path: str) -> list[str]:
+    """Split a dotted path into segments, with bracket-escape for literal keys.
+
+    Examples:
+      "a.b.c"                              → ["a", "b", "c"]
+      'power_user.personas.["X.png"]'      → ["power_user", "personas", "X.png"]
+      'power_user.personas["X.png"]'       → ["power_user", "personas", "X.png"]
+      '["weird.key"].sub'                  → ["weird.key", "sub"]
+
+    Bracket form `["..."]` keeps a literal segment that may contain dots. The
+    leading/trailing `.` around a bracket group is optional. Backwards compatible
+    with all dotted paths that don't use `["`.
+    """
+    segments: list[str] = []
+    buf: list[str] = []
+    i = 0
+    n = len(path)
+    while i < n:
+        c = path[i]
+        if c == "[" and i + 1 < n and path[i + 1] == '"':
+            if buf:
+                segments.append("".join(buf))
+                buf = []
+            end = path.find('"]', i + 2)
+            if end < 0:
+                raise ValueError(f"unterminated bracket-quoted segment in path '{path}' at {i}")
+            segments.append(path[i + 2 : end])
+            i = end + 2
+            if i < n and path[i] == ".":
+                i += 1
+            continue
+        if c == ".":
+            if buf:
+                segments.append("".join(buf))
+                buf = []
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+    if buf:
+        segments.append("".join(buf))
+    return segments
+
+
 def _get_path(d: Any, path: str) -> Any:
-    """Walk a dotted path through nested dicts/lists. '' returns the whole thing."""
+    """Walk a (possibly bracket-escaped) dotted path. '' returns the whole thing."""
     if not path:
         return d
     cur = d
-    for seg in path.split("."):
+    for seg in _parse_path(path):
         if isinstance(cur, list):
             cur = cur[int(seg)]
         elif isinstance(cur, dict):
@@ -45,10 +89,10 @@ def _get_path(d: Any, path: str) -> Any:
 
 
 def _set_path(d: Any, path: str, value: Any) -> None:
-    """Set value at dotted path; raises if intermediate key missing."""
+    """Set value at dotted path (bracket-escape supported); raises on bad navigation."""
     if not path:
         raise ValueError("empty path; refusing to replace the entire tree")
-    parts = path.split(".")
+    parts = _parse_path(path)
     cur = d
     for seg in parts[:-1]:
         if isinstance(cur, list):

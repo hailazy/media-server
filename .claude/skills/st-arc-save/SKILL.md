@@ -274,16 +274,21 @@ mcp__st__st_save_worldinfo(name=target_name, data=lb)
 
 ### Bind lorebook to persona (if persona-bound + just created)
 
+`active_avatar` ends in `.png` — the st-mcp path parser would split on the dot and corrupt the tree on a naked dotted path. Use bracket-escape syntax `["..."]` for the leaf key. (Background gotcha: see project CLAUDE.md "ST MCP server" entry, "Dotted-key gotcha + fix 2026-05-24".)
+
 ```python
 if not char_bound and not target_exists:
-    # Read settings, mutate persona binding, write back via MCP
-    settings_resp = mcp__st__st_get_settings()
-    s = json.loads(json.loads(settings_resp)['settings']) if isinstance(settings_resp, str) else json.loads(settings_resp['settings'])
+    # Surgical writes — no full-tree round-trip needed.
+    avatar_key = f'["{active_avatar}"]'  # bracket-escape leaf with '.png'
 
-    s['power_user']['persona_descriptions'][active_avatar]['lorebook'] = target_name
-    s['power_user']['persona_description_lorebook'] = target_name
-
-    mcp__st__st_save_settings(settings=json.dumps(s, ensure_ascii=False))
+    mcp__st__st_save_settings_path(
+        path=f"power_user.persona_descriptions.{avatar_key}.lorebook",
+        value=target_name,
+    )
+    mcp__st__st_save_settings_path(
+        path="power_user.persona_description_lorebook",
+        value=target_name,
+    )
     print(f"Bound persona '{persona_name}' → lorebook '{target_name}'")
 ```
 

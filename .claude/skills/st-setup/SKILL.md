@@ -121,6 +121,8 @@ Goal: redistribute bloated `description` content into specialized character card
 
 ### Step A: Read full card state
 
+**CRITICAL — dual-chunk gotcha (2026-05-25):** Cards downloaded from Chub/Janitor often carry BOTH `chara` (V2) and `ccv3` (V3) tEXt chunks. ST's reader prefers `ccv3` → patching only the first chunk found leaves the other stale and ST serves the OLD data even after restart. Collect ALL matching chunks; patch them ALL with identical content in Step D.
+
 ```python
 import struct, base64, json
 
@@ -130,9 +132,7 @@ BACKUP_PATH = f"{PNG_PATH}.bak"
 with open(PNG_PATH, 'rb') as f:
     png_data = f.read()
 
-card = None
-chunk_start = None
-chunk_keyword = None
+card_chunks = []  # list of (chunk_start, chunk_keyword, total_chunk_size, card_obj)
 i = 8
 while i < len(png_data) - 12:
     length = struct.unpack('>I', png_data[i:i+4])[0]
@@ -142,11 +142,13 @@ while i < len(png_data) - 12:
         keyword, _, text = chunk_data.partition(b'\x00')
         if keyword in (b'ccv3', b'chara'):
             card = json.loads(base64.b64decode(text).decode('utf-8'))
-            chunk_start = i
-            chunk_keyword = keyword
-            break
+            total_size = 4 + 4 + length + 4  # length + type + data + crc
+            card_chunks.append((i, keyword, total_size, card))
+            print(f"Found {keyword.decode()} chunk @ {i}, payload {length}B")
     i += 8 + length + 4
 
+assert card_chunks, "no chara/ccv3 chunk found"
+card = card_chunks[0][3]  # working source (chunks should be equivalent)
 d = card.get('data', card)  # V1 vs V3 format
 
 # Audit current state
@@ -264,21 +266,21 @@ else:
 new_json = json.dumps(card, ensure_ascii=False, separators=(',', ':'))
 new_b64 = base64.b64encode(new_json.encode('utf-8'))
 
-# Rebuild tEXt chunk: length(4) + "tEXt"(4) + data + crc(4)
-new_chunk_payload = chunk_keyword + b'\x00' + new_b64
-new_length_bytes = struct.pack('>I', len(new_chunk_payload))
-new_crc_bytes = struct.pack('>I', zlib.crc32(b'tEXt' + new_chunk_payload) & 0xFFFFFFFF)
-new_chunk = new_length_bytes + b'tEXt' + new_chunk_payload + new_crc_bytes
-
-# Replace old chunk
-old_length = struct.unpack('>I', png_data[chunk_start:chunk_start+4])[0]
-old_chunk_total_size = 4 + 4 + old_length + 4  # length + type + data + crc
-new_png = png_data[:chunk_start] + new_chunk + png_data[chunk_start + old_chunk_total_size:]
+# Patch ALL card-bearing chunks (see Step A dual-chunk gotcha).
+# Iterate offsets from LAST → FIRST so earlier offsets stay valid as we splice.
+new_png = png_data
+for chunk_start, chunk_keyword, old_total, _ in sorted(card_chunks, key=lambda x: -x[0]):
+    new_payload = chunk_keyword + b'\x00' + new_b64
+    new_length_bytes = struct.pack('>I', len(new_payload))
+    new_crc_bytes = struct.pack('>I', zlib.crc32(b'tEXt' + new_payload) & 0xFFFFFFFF)
+    new_chunk = new_length_bytes + b'tEXt' + new_payload + new_crc_bytes
+    new_png = new_png[:chunk_start] + new_chunk + new_png[chunk_start + old_total:]
+    print(f"✓ Patched {chunk_keyword.decode()} chunk @ {chunk_start}")
 
 with open(PNG_PATH, 'wb') as f:
     f.write(new_png)
 
-print(f"✓ Patched {PNG_PATH}")
+print(f"✓ Wrote PNG: {PNG_PATH}  ({len(png_data)} → {len(new_png)} bytes)")
 print(f"  Restore: cp {BACKUP_PATH} {PNG_PATH}")
 ```
 
@@ -465,7 +467,10 @@ EMOTION_TAGS = {
     "neutral":        "neutral_expression, relaxed_face, calm, composed",
 }
 
-NEG = "lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark, text, multiple_characters, duplicate"
+NEG = ("lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark, text, "
+       "multiple_characters, duplicate, close-up, extreme_close-up, cropped, partial_face, single_eye, "
+       "from_behind, from_side, breasts_focus, torso_focus, body_focus, "
+       "hair_over_face, hair_over_eyes, looking_away, looking_down")
 
 EMOTIONS = list(EMOTION_TAGS.keys())
 
@@ -509,7 +514,22 @@ for i, emotion in enumerate(EMOTIONS):
         continue
     
     tags = EMOTION_TAGS[emotion]
-    prompt = f"{FACE_ID}, portrait, close-up, face_focus, looking_at_viewer, {tags}, masterpiece, best quality, newest, absurdres, highres, soft_lighting, detailed_face"
+    # Framing validated 2026-05-25 (Mina sprite batch):
+    #   - `head_and_shoulders, from_front, large_face, centered_composition, simple background`
+    #     keeps face dominant. Earlier `portrait, close-up, face_focus` collapsed NoobAI into
+    #     single-eye / single-mouth crops on strong expression tags; later `upper_body` pulled
+    #     torso/breasts into frame on subtle expressions.
+    #   - `(tags:1.3)` weight wrap is required for SUBTLE emotions (neutral/optimism/relief/
+    #     gratitude/nervousness/remorse). Without it, the model defaults to body-focused
+    #     composition because the expression signal is too weak to drive the crop.
+    #   - Strong emotions (joy/anger/desire/grief) work fine at weight 1.0 — boost is safe
+    #     across the board, no over-cooking observed.
+    prompt = (
+        f"{FACE_ID}, head_and_shoulders, from_front, looking_at_viewer, "
+        f"large_face, centered_composition, simple background, "
+        f"({tags}:1.3), "
+        f"masterpiece, best quality, newest, absurdres, highres, soft_lighting, detailed_face"
+    )
     
     payload = {
         "prompt": prompt,
