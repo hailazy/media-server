@@ -1,0 +1,83 @@
+# Forge models manifest — source of truth for disaster recovery
+#
+# Pull all: ./scripts/forge-pull-models.sh
+# Pull one: ./scripts/forge-pull-models.sh --only NoobAI-XL-v1.1
+# Verify:   ./scripts/forge-pull-models.sh --check
+#
+# Sources:
+#   hf://<repo>/<file>           HuggingFace (huggingface-cli download)
+#   civitai://<modelVersionId>   Civitai (needs CIVITAI_API_KEY in .env)
+#   url://<full-url>             Direct download (curl/wget)
+#
+# target_dir: relative to forge/data/forge/models/
+#
+# sha256 (optional): if set, verified after download. Generate with:
+#   sha256sum <file>
+
+# ─────────────────────────────────────────────────────────────
+# Checkpoints (~6.7GB)
+# ─────────────────────────────────────────────────────────────
+checkpoints:
+  - name: NoobAI-XL-v1.1.safetensors
+    source: hf://Laxhar/noobai-XL-1.1/noobaiXL_v11.safetensors
+    target_dir: Stable-diffusion
+    # sha256: TBD — fill after first verified download
+
+# ─────────────────────────────────────────────────────────────
+# LoRAs (~1.6GB total)
+# Civitai modelVersionId from URL: civitai.com/models/<modelId>?modelVersionId=<id>
+# ─────────────────────────────────────────────────────────────
+loras:
+  - name: AddMicroDetails_Illustrious_v6.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+    note: Detail enhancer for Illustrious/NoobAI
+
+  - name: Parasite_horror_transformation_IL_port.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: Oviposition_xray_illus-000040.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: anima-preview-3-masterpieces-v5.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+    note: Quality LoRA, always-on
+
+  - name: MGE_SlimeCarrier_v4.1_IL.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: oviposition_anima.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: Arache_sex_illus-000037.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: noobai_epred_11_bioluminescence_v15.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+  - name: transformation_onahole_noobai.safetensors
+    source: civitai://TBD
+    target_dir: Lora
+
+# ─────────────────────────────────────────────────────────────
+# Auto-downloaded by Forge (skip in manifest, regenerable):
+#   - Codeformer/, GFPGAN/, ESRGAN/, diffusers/, VAE-approx/
+# ─────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────
+# Pre-disaster homework for Hải:
+# 1. For each LoRA above, lookup Civitai modelVersionId:
+#    - Open civitai.com → search by filename
+#    - URL pattern: civitai.com/models/<modelId>?modelVersionId=<versionId>
+#    - Update source: civitai://<versionId>
+# 2. Run: ./scripts/forge-pull-models.sh --generate-checksums
+#    → adds sha256 to each entry
+# 3. Commit models.yml
+# ─────────────────────────────────────────────────────────────

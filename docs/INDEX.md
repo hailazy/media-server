@@ -19,6 +19,7 @@ Per-section READMEs cover ops, gotchas, and integration. The docs in this folder
 2. **[README.md](README.md)** — home-server overview, architecture, requirements, install.
 3. **[PODMAN.md](PODMAN.md)** — Podman fundamentals: rootless vs rootful, SELinux, GPU CDI, systemd integration. Read after first run if you need platform depth.
 4. **[AIRVPN-VALIDATION-CHECKLIST.md](AIRVPN-VALIDATION-CHECKLIST.md)** — AirVPN + Gluetun setup, the 4 chain-bug gotchas, port forwarding wiring.
+5. **[ONEDRIVE-BACKUP.md](ONEDRIVE-BACKUP.md)** — Design doc cho disaster recovery non-git state (configs, DBs, secrets) qua 5TB OneDrive via rclone + GPG. **Not implemented yet** — guide để execute khi rảnh.
 
 ## Media section deep-dives ([docs/media/](media/))
 
