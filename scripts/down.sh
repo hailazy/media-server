@@ -1,6 +1,6 @@
 #!/bin/bash
 # Home Server unified shutdown script
-# Usage: ./scripts/down.sh {media|forge|sillytavern|dashboard|all} [extra args]
+# Usage: ./scripts/down.sh {media|forge|sillytavern|dashboard|ebooks|all} [extra args]
 
 set -e
 
@@ -12,7 +12,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 usage() {
     cat <<EOF
-Usage: $0 {media|forge|sillytavern|dashboard|all} [extra args]
+Usage: $0 {media|forge|sillytavern|dashboard|ebooks|all} [extra args]
 
 Common extra args:
   --volumes, -v          Remove named volumes
@@ -46,12 +46,12 @@ main() {
     check_podman_compose
 
     case "$SECTION" in
-        media|forge|sillytavern|dashboard)
+        media|forge|sillytavern|dashboard|ebooks)
             stop_section "$SECTION" "$@"
             ;;
         all)
             # Reverse of up order
-            local order=(dashboard sillytavern media forge)
+            local order=(ebooks dashboard sillytavern media forge)
             for s in "${order[@]}"; do
                 stop_section "$s" "$@"
             done

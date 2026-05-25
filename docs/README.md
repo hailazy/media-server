@@ -12,6 +12,7 @@ Self-hosted personal services on a single Linux box, organized as **modular podm
 ./scripts/up.sh forge          # Stable Diffusion WebUI Forge
 ./scripts/up.sh sillytavern    # LLM chat UI
 ./scripts/up.sh dashboard      # Homarr launchpad
+./scripts/up.sh ebooks         # Calibre-Web Automated (e-book library)
 ./scripts/up.sh all            # everything available
 
 ./scripts/down.sh <section>    # stop
@@ -28,8 +29,9 @@ The KDE tray indicator (`scripts/tray.py`, autostarts on login) gives 1-click co
 | **forge/** | Stable Diffusion WebUI Forge | `home-net` | `:7860` (localhost-only) |
 | **sillytavern/** | SillyTavern + Forge image-gen integration | `home-net` | `:8000` (localhost-only) |
 | **dashboard/** | Homarr | `home-net` | `:7575` (LAN-accessible) |
+| **ebooks/** | Calibre-Web Automated (mounts existing Calibre library) | `home-net` | `:8083` (localhost-only) |
 
-Each section has its own `compose.yml`, `.env`, `data/` (gitignored), and `README.md`. The READMEs in `forge/`, `sillytavern/`, `dashboard/` are canonical for section-specific details. For media, see [docs/media/](media/).
+Each section has its own `compose.yml`, `.env`, `data/` (gitignored), and `README.md`. The READMEs in `forge/`, `sillytavern/`, `dashboard/`, `ebooks/` are canonical for section-specific details. For media, see [docs/media/](media/).
 
 ## Architecture
 
@@ -53,7 +55,7 @@ Each section has its own `compose.yml`, `.env`, `data/` (gitignored), and `READM
    ↕ all routed by KDE tray (icon = stack state)
 ```
 
-- AI sections (forge, sillytavern, dashboard) share `home-net` Podman network → cross-container DNS works (`http://home-forge:7860`).
+- AI sections (forge, sillytavern, dashboard) plus ebooks share `home-net` Podman network → cross-container DNS works (`http://home-forge:7860`, `http://home-ebooks:8083`).
 - Media stack runs on its own network. Dashboard reaches media services via `host.containers.internal:<port>`.
 - VRAM budget enforced by `scripts/vram-guard.sh` (RTX 4070 Ti SUPER 16GB ceiling).
 
@@ -76,6 +78,7 @@ Each section has its own `compose.yml`, `.env`, `data/` (gitignored), and `READM
    cp forge/.env.example      forge/.env       # optional
    cp sillytavern/.env.example sillytavern/.env # optional
    cp dashboard/.env.example  dashboard/.env   # optional
+   cp ebooks/.env.example     ebooks/.env      # set CALIBRE_LIBRARY_PATH
    ```
    Edit each `.env` — required vars are clearly marked. Media section needs AirVPN credentials (see [AIRVPN-VALIDATION-CHECKLIST.md](AIRVPN-VALIDATION-CHECKLIST.md)).
 
@@ -110,6 +113,8 @@ Each section has its own `compose.yml`, `.env`, `data/` (gitignored), and `READM
 | Toggle a category | `./scripts/category.sh {ai\|media\|all} {toggle\|up\|down\|status}` |
 | Dashboard backup | `./scripts/dashboard-backup.sh` |
 | Dashboard restore | `./scripts/dashboard-restore.sh <backup.tar.gz>` |
+| Ebooks backup | `./scripts/ebooks-backup.sh` |
+| Ebooks restore | `./scripts/ebooks-restore.sh <backup.tar.gz>` |
 | Media maintenance | `./media/maintenance/maintenance.sh health` |
 | Media quick-debug | `./media/maintenance/quick-debug.sh` |
 

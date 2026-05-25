@@ -10,6 +10,7 @@ Self-hosted personal services orchestrated as **modular podman-compose sections*
 | `forge/` | Stable Diffusion WebUI Forge — shared image gen | http://localhost:7860 | [`forge/README.md`](../forge/README.md) |
 | `sillytavern/` | LLM chat UI with character cards, image-gen integration | http://localhost:8000 | [`sillytavern/README.md`](../sillytavern/README.md) |
 | `dashboard/` | Homarr — single pane of glass | http://localhost:7575 | [`dashboard/README.md`](../dashboard/README.md) |
+| `ebooks/` | Calibre-Web Automated — web UI + auto-ingest cho thư viện Calibre có sẵn | http://localhost:8083 | [`ebooks/README.md`](../ebooks/README.md) |
 
 Per-section READMEs cover ops, gotchas, and integration. The docs in this folder cover **cross-cutting** concerns + media-section deep-dives.
 
@@ -67,5 +68,5 @@ Hardware/performance docs specific to the media stack:
 - All commands run from repo root unless noted.
 - `<section>/.env` is gitignored; `<section>/.env.example` is the template.
 - Container state lives in `<section>/data/` (also gitignored).
-- AI sections (forge, sillytavern, dashboard) share `home-net` Podman network for cross-container DNS (`http://home-forge:7860`, etc.).
+- AI sections (forge, sillytavern, dashboard) plus ebooks share `home-net` Podman network for cross-container DNS (`http://home-forge:7860`, `http://home-ebooks:8083`, etc.).
 - Media stack runs on its own network (default project network); dashboard reaches it via `host.containers.internal`.

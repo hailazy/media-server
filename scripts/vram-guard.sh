@@ -12,7 +12,7 @@
 #   media   light (Jellyfin NVENC ~2 GB)
 #     - HARD REFUSE if free <  1000 MB
 #     - else allow
-#   sillytavern, dashboard → non-GPU, exit 0 immediately
+#   sillytavern, dashboard, ebooks → non-GPU, exit 0 immediately
 #
 # Overrides: VRAM_GUARD_FORCE=1 env var, or --force flag → skip check.
 
@@ -24,7 +24,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 usage() {
     echo "Usage: $0 check <section> [--force]"
-    echo "  section: media | forge | sillytavern | dashboard"
+    echo "  section: media | forge | sillytavern | dashboard | ebooks"
 }
 
 CMD="${1:-}"
@@ -47,7 +47,7 @@ fi
 
 # Non-GPU sections: pass through
 case "$SECTION" in
-    sillytavern|dashboard)
+    sillytavern|dashboard|ebooks)
         exit 0
         ;;
     media|forge)

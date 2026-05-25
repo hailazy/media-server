@@ -1,0 +1,38 @@
+services:
+  calibre-web-automated:
+    image: docker.io/crocodilestick/calibre-web-automated:latest
+    container_name: home-ebooks
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8083:8083"
+    volumes:
+      - ./data/config:/config:Z
+      - ./data/ingest:/cwa-book-ingest:Z
+      # Existing Calibre library on host (OneDriveGUI-synced).
+      # Mounted read-write — CWA updates metadata.db on ingest.
+      - "${CALIBRE_LIBRARY_PATH:?ebooks/.env must set CALIBRE_LIBRARY_PATH}:/calibre-library:z"
+    environment:
+      # Rootless Podman quirk: container UID 0 maps to host UID 1000 (haint)
+      # in the default user namespace. Setting PUID=0/PGID=0 makes CWA write
+      # to the bind-mounted Calibre library AS haint on host — preserving
+      # OneDriveGUI sync and Calibre desktop access. PUID!=0 would shift
+      # writes to subuid 525287, locking haint out. Same pattern as media/.
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Ho_Chi_Minh
+      # btrfs local → inotify works. Flip to true if library ever moves to NFS/SMB.
+      - NETWORK_SHARE_MODE=false
+    healthcheck:
+      # CWA image has curl, not wget. -f accepts 2xx+3xx; 302 to /login = healthy.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8083/"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - home-net
+
+networks:
+  home-net:
+    name: home-net
+    external: true

@@ -11,11 +11,12 @@ CATEGORY="${1:-}"
 ACTION="${2:-toggle}"
 
 case "$CATEGORY" in
-    ai)    sections=(forge sillytavern) ;;
-    media) sections=(media) ;;
-    all)   sections=(dashboard forge sillytavern media) ;;
+    ai)     sections=(forge sillytavern) ;;
+    media)  sections=(media) ;;
+    ebooks) sections=(ebooks) ;;
+    all)    sections=(dashboard forge sillytavern media ebooks) ;;
     *)
-        echo "Usage: $0 {ai|media|all} {toggle|up|down|status}"
+        echo "Usage: $0 {ai|media|ebooks|all} {toggle|up|down|status}"
         exit 1
         ;;
 esac
@@ -23,6 +24,7 @@ esac
 section_container() {
     case "$1" in
         forge|sillytavern|dashboard) echo "home-$1" ;;
+        ebooks) echo "home-ebooks" ;;
         media) echo "jellyfin" ;;
     esac
 }
