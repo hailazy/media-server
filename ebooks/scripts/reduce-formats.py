@@ -29,7 +29,7 @@ from pathlib import Path
 
 IMAGE        = "docker.io/crocodilestick/calibre-web-automated:latest"
 EBOOKS_CTR   = "home-ebooks"
-LIBRARY_HOST = Path("/home/haint/OneDrive/dev/Calibre Library")
+LIBRARY_HOST = Path("/home/haint/Data/Calibre Library")
 LIBRARY_CTR  = "/calibre-library"
 
 VN_CHARS = set(

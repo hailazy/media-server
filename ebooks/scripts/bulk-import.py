@@ -32,7 +32,7 @@ from pathlib import Path
 # ─── Config ───────────────────────────────────────────────────────────────
 IMAGE        = "docker.io/crocodilestick/calibre-web-automated:latest"
 EBOOKS_CTR   = "home-ebooks"
-LIBRARY_HOST = Path("/home/haint/OneDrive/dev/Calibre Library")
+LIBRARY_HOST = Path("/home/haint/Data/Calibre Library")
 SOURCE_HOST  = Path("/home/haint/Downloads/Ebook-extracted")
 LIBRARY_CTR  = "/calibre-library"
 SOURCE_CTR   = "/staging"

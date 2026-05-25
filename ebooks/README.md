@@ -13,7 +13,7 @@ Default login lần đầu: `admin` / `admin123` — đổi ngay.
 ## Quick start
 
 ```bash
-cp ebooks/.env.example ebooks/.env       # default path là /home/haint/OneDrive/dev/Calibre Library
+cp ebooks/.env.example ebooks/.env       # default path là /home/haint/Data/Calibre Library
 ./scripts/up.sh ebooks
 xdg-open http://localhost:8083
 ```
@@ -35,7 +35,7 @@ Container DNS từ dashboard/forge/ST: `http://home-ebooks:8083`.
 
 ## Library mount
 
-Mount thẳng `${CALIBRE_LIBRARY_PATH}` → `/calibre-library` (read-write). OneDriveGUI tiếp tục sync thay đổi (metadata.db, sách mới) lên OneDrive làm cloud backup tự động.
+Mount thẳng `${CALIBRE_LIBRARY_PATH}` → `/calibre-library` (read-write). Library sống độc lập trên ổ Data, **không trong OneDrive sync mount**. Backup lên OneDrive cloud qua systemd timer `calibre-sync.timer` (daily 22:30, one-way local→cloud bằng `rclone sync` → `onedrive-dev:Calibre Library/`). Manual sync: `systemctl --user start calibre-sync.service`.
 
 Lần đầu login: Admin → Basic Configuration → verify library path là `/calibre-library`. CWA auto-detect khi có `metadata.db`.
 
