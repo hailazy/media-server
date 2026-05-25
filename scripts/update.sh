@@ -3,7 +3,7 @@
 #
 # Usage: ./scripts/update.sh
 #
-# Pulls latest images for media, forge, sillytavern, dashboard. If sections are
+# Pulls latest images for media, forge, sillytavern, dashboard, ebooks. If sections are
 # currently running, prompts whether to recycle them (down + up) to apply the
 # new images. Pull is per-image atomic and resumable; safe to interrupt.
 #
@@ -17,7 +17,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
-SECTIONS=(media forge sillytavern dashboard)
+SECTIONS=(media forge sillytavern dashboard ebooks)
 
 # Maps section → primary container name (mirrors tray.py state-detection logic)
 section_container() {
@@ -26,6 +26,7 @@ section_container() {
         forge)        echo "home-forge" ;;
         sillytavern)  echo "home-sillytavern" ;;
         dashboard)    echo "home-dashboard" ;;
+        ebooks)       echo "home-ebooks" ;;
     esac
 }
 
