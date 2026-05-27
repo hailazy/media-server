@@ -111,6 +111,33 @@ imagegen "..." --quality high --count 4 --dry-run
 | `--env-file PATH` | — | `setdefault` load a `.env` (never clobbers exported vars). |
 | `--dry-run` | off | Print spec + cost, no call. |
 
+### 4a. Batch mode (50% cost discount, 24h async)
+
+Use when you have N prompts known ahead of time and can wait up to 24h.
+Image gen Batch API gives 50% off vs sync. Skip for interactive iteration.
+
+```bash
+# 1. Write prompts.jsonl — one JSON spec per line
+echo '{"prompt": "iron cradle moss-covered phase A", "quality": "low"}' > prompts.jsonl
+echo '{"prompt": "iron cradle exposed phase B", "quality": "medium", "size": "1536x1024"}' >> prompts.jsonl
+
+# 2. Submit
+imagegen batch submit prompts.jsonl --project IC --env-file .env
+# → prints batch_id, n_requests, estimated cost
+
+# 3. Check status anytime
+imagegen batch status batch_abc123 --env-file .env
+# → "in_progress | completed | failed", progress counts
+
+# 4. Fetch when status=completed
+imagegen batch fetch batch_abc123 --out-dir ./out/ --env-file .env
+# → saves images as <custom_id>.jpeg
+```
+
+JSONL fields (`prompt` required, rest optional with GenSpec defaults):
+`prompt`, `model`, `size`, `quality`, `n`, `output_format`, `output_compression`,
+`moderation`, `extra`. `edit_ref` NOT supported (Batch API can't upload refs).
+
 ---
 
 ## 5. Caching & cost ledger

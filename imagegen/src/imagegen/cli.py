@@ -79,6 +79,11 @@ def _build_prompt(text: str, prepend_file: Path | None) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Route to batch subcommand if first arg is "batch"
+    raw_args = list(sys.argv[1:]) if argv is None else list(argv)
+    if raw_args and raw_args[0] == "batch":
+        return _main_batch(raw_args[1:])
+
     args = _parse_args(argv)
 
     if args.env_file:
@@ -176,6 +181,83 @@ def main(argv: list[str] | None = None) -> int:
                   project=args.project, est_cost=est, cache_hit=False)
     print(f"[imagegen] done — {len(saved)} file(s)")
     return 0
+
+
+def _main_batch(argv: list[str]) -> int:
+    """`imagegen batch <subcmd>` — Batch API workflow (50% cost discount, 24h async).
+
+    Subcommands:
+      submit <prompts.jsonl> [--project X] [--env-file F]
+      status <batch_id>
+      fetch <batch_id> --out-dir <dir>
+    """
+    from . import batch as batch_mod
+
+    p = argparse.ArgumentParser(prog="imagegen batch")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    p_submit = sub.add_parser("submit", help="Submit a JSONL of prompts")
+    p_submit.add_argument("input_file", type=Path,
+                          help="JSONL with one prompt-spec per line")
+    p_submit.add_argument("--project", default="",
+                          help="cost-ledger attribution tag")
+    p_submit.add_argument("--env-file", type=Path, default=None)
+
+    p_status = sub.add_parser("status", help="Check batch progress")
+    p_status.add_argument("batch_id")
+    p_status.add_argument("--env-file", type=Path, default=None)
+
+    p_fetch = sub.add_parser("fetch", help="Download completed batch results")
+    p_fetch.add_argument("batch_id")
+    p_fetch.add_argument("--out-dir", type=Path, required=True)
+    p_fetch.add_argument("--format", default="jpeg", dest="output_format")
+    p_fetch.add_argument("--env-file", type=Path, default=None)
+
+    args = p.parse_args(argv)
+
+    if args.env_file:
+        load_dotenv(args.env_file)
+
+    try:
+        if args.cmd == "submit":
+            specs = batch_mod.load_specs_from_jsonl(args.input_file)
+            print(f"[imagegen batch] loaded {len(specs)} specs from {args.input_file}")
+            result = batch_mod.submit_batch(specs, project=args.project)
+            print(f"[imagegen batch] batch_id: {result['batch_id']}")
+            print(f"[imagegen batch] requests: {result['n_requests']}")
+            print(f"[imagegen batch] estimated cost (50% off sync): "
+                  f"~${result['estimated_cost_usd']:.4f}")
+            print(f"[imagegen batch] status: {result['status']}")
+            print(f"[imagegen batch] poll with: imagegen batch status {result['batch_id']}")
+            return 0
+
+        if args.cmd == "status":
+            s = batch_mod.batch_status(args.batch_id)
+            print(f"[imagegen batch] status={s['status']}")
+            print(f"[imagegen batch] progress: {s['completed']}/{s['total']} "
+                  f"(failed: {s['failed']})")
+            if s["output_file_id"]:
+                print(f"[imagegen batch] output_file_id: {s['output_file_id']}")
+            if s["error_file_id"]:
+                print(f"[imagegen batch] error_file_id: {s['error_file_id']}")
+            return 0
+
+        if args.cmd == "fetch":
+            r = batch_mod.fetch_batch(args.batch_id, args.out_dir, args.output_format)
+            print(f"[imagegen batch] saved {r['saved_count']} files to {args.out_dir}")
+            if r["errors"]:
+                print(f"[imagegen batch] {len(r['errors'])} errors:")
+                for e in r["errors"][:5]:
+                    print(f"  - {e}")
+            return 0
+
+        return 1
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR: batch API call failed: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
