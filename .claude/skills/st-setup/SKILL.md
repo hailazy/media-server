@@ -329,6 +329,18 @@ print(f"✓ Patched cache: {target_cache_path}")
 
 **Only patch entries for the patched character** (preserve cache for unrelated characters).
 
+**Step D.5: Delete stale avatar thumbnail** — ST renders the character list (left panel, group chat pickers) từ `data/default-user/thumbnails/avatar/<Char>.png` (~12KB JPEG), NOT from the full PNG. ST's regen-on-mtime check is unreliable across container restarts (empirically: thumbnail survives PNG bitmap change). Defensive cleanup is safe even when only card text changed — ST regenerates on next thumbnail HTTP request.
+
+```python
+import os
+THUMB_PATH = f"/home/haint/Projects/home-server/sillytavern/data/default-user/thumbnails/avatar/{char_name}.png"
+if os.path.exists(THUMB_PATH):
+    os.remove(THUMB_PATH)
+    print(f"✓ Stale thumbnail deleted: {THUMB_PATH}")
+```
+
+**Browser-side cache is separate.** ST serves avatar with default static-file headers; browsers may cache aggressively. Tell the user to hard-refresh (Ctrl+Shift+R) after ST restart — server-side cleanup alone is not enough.
+
 Then restart ST:
 
 ```bash
@@ -408,6 +420,8 @@ Print audit report:
 ---
 
 ## Phase 3: Expression Sprites (`--expr` or `--all`)
+
+**Non-humanoid char caveat (2026-05-26):** For faceless creatures (slug, leech, parasite, monster — no eyes/mouth/face anatomy), the 28 go-emotions tag set maps poorly. NoobAI produces 28 near-identical body shots since emotion vocabulary is face-centric. **Skip `--expr` for non-humanoid chars** — ST falls back to main avatar for all detected emotions automatically when `characters/<Char>/` is empty or absent. Cleaner than 28 lookalike sprites. Verified on Parasite redesign: deleting old pre-redesign sprite folder + skipping new gen gave a more coherent UI than forcing 28 worm variants.
 
 **28 standard emotion labels (distilbert go-emotions):**
 `admiration, amusement, anger, annoyance, approval, caring, confusion, curiosity, desire, disappointment, disapproval, disgust, embarrassment, excitement, fear, gratitude, grief, joy, love, nervousness, optimism, pride, realization, relief, remorse, sadness, surprise, neutral`
@@ -690,3 +704,4 @@ Next steps:
 - **PNG patched + V1 synced but UI STILL shows old data (--adv)**: ST disk cache (`data/_cache/characters/<sha256>`) is the source of truth for UI, not the PNG. ST source `endpoints/characters.js:182` reads cache first; PNG only on cache miss. PNG patches alone never reach UI because data flow is one-direction (UI→file). Cache-nuke + restart didn't fix it either (ST recreated cache with stale data, mechanism unclear). **Real fix: patch BOTH PNG and cache file `value` field with same patched JSON** (see Step D cache patch block). User's correct diagnosis: "patch chỉ hoạt động một chiều UI → image, không ngược lại."
 - **LLM over-trims description (--adv)**: user reviews diff in Step C; can pick "Edit before applying" or "Skip Advanced Def".
 - **depth_prompt too aggressive in RP**: bump depth from 2 → 4 manually in card UI to soften LLM attention.
+- **Avatar visual changed but ST UI keeps showing OLD image** (e.g., after main avatar regen via Forge, not just card text patch): ST renders char list from `data/default-user/thumbnails/avatar/<Char>.png` (cached ~12KB JPEG), not the full PNG. The regen-on-mtime trigger is unreliable across container restarts. **Fix**: `rm data/default-user/thumbnails/avatar/<Char>.png` — ST regens on next HTTP `/thumbnail?type=avatar&file=<Char>.png` request. THEN user MUST hard-refresh browser (Ctrl+Shift+R) to bust client-side cache. Step D.5 above bakes this cleanup into Phase 1.5; only needed manually if you regenerated the avatar bitmap outside the standard `--adv` flow.
