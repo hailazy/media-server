@@ -206,7 +206,7 @@ from . import ImageProvider, register
 @register
 class ForgeProvider(ImageProvider):
     name = "forge"
-    default_model = "animagine-xl-3.1"
+    default_model = "NoobAI-XL-v1.1"
 
     def generate(self, spec: GenSpec) -> Iterator[ImageResult]:
         url = os.environ.get("FORGE_URL", "http://localhost:7860").rstrip("/")

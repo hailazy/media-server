@@ -62,3 +62,8 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+
+# imagegen — LoRA training tooling/data/outputs (large, local-only; README + .toml configs stay tracked)
+imagegen/sd-scripts/
+imagegen/nine_dataset/
+imagegen/nine_lora_out/

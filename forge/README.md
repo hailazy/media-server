@@ -11,15 +11,15 @@ Stable Diffusion WebUI Forge as a shared service for ai-rp-stack workflow + Lear
 ## Models (data/forge/models/Stable-diffusion/)
 | Filename | Profile | Use case |
 |----------|---------|----------|
-| `NoobAI-XL-v1.1.safetensors` | NSFW (anime, Illustrious base) | ai-rp-stack roleplay |
-| `animagine-xl-3.1.safetensors` | Educational (clean anime flat illustration) | Learning_English flashcards |
+| `NoobAI-XL-v1.1.safetensors` | NSFW-capable anime (Illustrious base) | Shared default — ai-rp-stack roleplay + Learning_English flashcards |
+| `animagine-xl-4.0-opt.safetensors` | Clean SFW anime (Animagine v4 base) | Clean/SFW anime gen — selected client-side on demand |
 
-Profile selection is **client-side**: clients call `POST /sdapi/v1/options` with `sd_model_checkpoint` to switch model before generating.
+Two checkpoints are mounted. `NoobAI-XL-v1.1` is the shared default — since 2026-05-17 both ai-rp-stack and Learning_English use it (NoobAI parses the pipelines' prompts better). Clients pick a checkpoint client-side via `POST /sdapi/v1/options` with `sd_model_checkpoint` before generating; switching costs ~3s.
 
 ## Conventions
-- ai-rp-stack / SillyTavern → `NoobAI-XL-v1.1.safetensors`
-- Learning_English → `animagine-xl-3.1.safetensors`
-- Don't run gen requests from both clients simultaneously — Forge serializes, switching costs ~3s
+- Default for all clients → `NoobAI-XL-v1.1.safetensors`
+- `animagine-xl-4.0-opt` available for clean SFW anime — switch to it client-side when needed
+- Don't run gen requests from both clients simultaneously — Forge serializes requests, and a checkpoint switch costs ~3s
 
 ## Operations
 ```bash
