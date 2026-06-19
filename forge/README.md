@@ -12,14 +12,12 @@ Stable Diffusion WebUI Forge as a shared service for ai-rp-stack workflow + Lear
 | Filename | Profile | Use case |
 |----------|---------|----------|
 | `NoobAI-XL-v1.1.safetensors` | NSFW-capable anime (Illustrious base) | Shared default — ai-rp-stack roleplay + Learning_English flashcards |
-| `animagine-xl-4.0-opt.safetensors` | Clean SFW anime (Animagine v4 base) | Chimera project art — client-selectable |
 
-Two checkpoints are mounted. `NoobAI-XL-v1.1` is the shared default — since 2026-05-17 both ai-rp-stack and Learning_English use it (NoobAI parses the pipelines' prompts better). Clients pick a checkpoint client-side via `POST /sdapi/v1/options` with `sd_model_checkpoint` before generating; switching costs ~3s.
+`NoobAI-XL-v1.1` is the only mounted checkpoint and the shared default — since 2026-05-17 both ai-rp-stack and Learning_English use it (NoobAI parses the pipelines' prompts better). Clients still set it explicitly via `POST /sdapi/v1/options` with `sd_model_checkpoint` before generating.
 
 ## Conventions
 - Default for all clients → `NoobAI-XL-v1.1.safetensors`
-- `animagine-xl-4.0-opt` — Chimera project art; switch to it client-side when needed
-- Don't run gen requests from both clients simultaneously — Forge serializes requests, and a checkpoint switch costs ~3s
+- Don't run gen requests from both clients simultaneously — Forge serializes requests
 
 ## Operations
 ```bash
