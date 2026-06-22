@@ -1,0 +1,39 @@
+# Preset: noobai-illustration
+# A complete LOOK = engine settings + style prompt scaffold. DOMAIN-AGNOSTIC and
+# PUBLIC: pure recipe, no project identity / character / NSFW. A consuming project
+# references this by name in its .claude/imagegen/profile.toml; the project's own
+# anchor.txt supplies the identity that rides on top of this style.
+#
+# Lineage: NoobAI-XL eps base, illustration tier with value-force lighting
+# (the "recipe #12" family — dark bg + rim/backlight + thick outline + chiaroscuro
+# → crisp value blocks that survive a downscale-to-pixel post-process).
+
+schema = 1
+name = "noobai-illustration"
+description = "NoobAI-XL eps, illustration tier, value-force lighting. Quality block at END with emphasis."
+
+# ── engine settings (inlined into each ticket so it is self-contained) ──
+checkpoint_match = "NoobAI-XL-v1.1"   # substring; resolved against mounted models
+vae = "None"                          # force the baked VAE (NoobAI ships one)
+clip_skip = 1
+sampler = "Euler a"                   # ancestral; pixel-downscale friendly
+scheduler = "Karras"
+steps = 28
+cfg = 7.0                             # 7 gives crisper outlines than 6 (sweep 2026-06-20)
+size = "832x1216"                     # SDXL portrait
+
+# ── prompt scaffold (generic; the project anchor supplies identity) ──
+# Assembly order (NoobAI, load-bearing): count+age → IDENTITY(anchor) → subject →
+# style_positive → style_bg → (((quality))) at the END. See forge/knowledge/noobai-conventions.md.
+quality = "masterpiece, best quality, amazing quality, newest, very aesthetic, absurdres"
+style_positive = "cel shading, hard shadows, cast shadow, single light source, strong chiaroscuro, high contrast, rim light, backlight, (bold outline:1.2), flat color, limited palette"
+style_bg = "dark grey background, simple background"
+style_negative = "smooth shading, ambient occlusion, subsurface scattering, gradient, soft shading, blurry, depth of field, bokeh, lens flare, chromatic aberration, realistic, 3d, detailed background, white background, black background, high-key, blown out, hatching, screentone, halftone, glow, bloom, watermark, artist name, username, logo, web address"
+
+# ── expert defaults ──
+adetailer = ["face", "hands"]         # mandatory hands pass; Forge returns the applied final
+
+[notes]
+controlnet = "openpose forces LIMB-pose, NOT camera-view; faceless-silhouette→lineart forces view (brain d73a7334387a)"
+pixelation = "post-process downscale (e.g. kCentroid) — NOT a gen setting; lives in the consuming project's pipeline"
+hires_fix = "OFF — re-softens edges, bad for the crisp value blocks this preset exists to produce"

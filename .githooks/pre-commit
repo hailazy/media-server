@@ -34,4 +34,21 @@ else
     echo "shellcheck not found, skipping shell checks."
 fi
 
+# --- OPSEC secret-scan (home-server is a PUBLIC repo) ---
+# The one hard secret is the 18+ game's SHIPPING TITLE. NSFW infra (LoRA names,
+# NoobAI recipes) is intentionally public, so we do NOT grep those. We block the
+# shipping title (specific → zero false positives) + a forced-add of local-only data.
+echo "Running OPSEC secret-scan..."
+if git diff --cached -U0 | grep -iqE '^\+.*ninth[ _-]?bride'; then
+    echo "ERROR: OPSEC — the 18+ game shipping title appears in a staged change."
+    echo "       home-server is PUBLIC. Use the codename 'chimera' only — never the shipping title."
+    git diff --cached -U0 | grep -inE '^\+.*ninth[ _-]?bride' | head
+    exit 1
+fi
+if git diff --cached --name-only | grep -qiE 'imagegen/chimera_dataset|imagegen-queue'; then
+    echo "ERROR: OPSEC — staging 18+ training data or the gen queue (must stay local-only)."
+    git diff --cached --name-only | grep -iE 'imagegen/chimera_dataset|imagegen-queue'
+    exit 1
+fi
+
 echo "Pre-commit checks passed."

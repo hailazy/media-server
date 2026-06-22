@@ -57,3 +57,4 @@ def available() -> list[str]:
 
 # Import built-in providers so @register populates the registry on package load.
 from . import gpt_image_2  # noqa: E402,F401
+from . import forge  # noqa: E402,F401

@@ -167,7 +167,7 @@ else:
 **Step 5 — Read reference docs**:
 
 Use `Read` tool to load:
-- `~/Projects/home-server/.claude/skills/st-gen-image-prompt/data/noobai-conventions.md` — tag escape, prompt order, quality block
+- `~/Projects/home-server/forge/knowledge/noobai-conventions.md` — tag escape, prompt order, quality block (SHARED hub knowledge, also used by `/gen-art`)
 - `~/Projects/home-server/.claude/skills/st-gen-image-prompt/data/prompt-template.md` — canonical example
 
 ---
@@ -302,7 +302,7 @@ for tag in draft_tags:
 
 ## Phase 2.6: LoRA Injection
 
-Read `~/Projects/home-server/.claude/skills/st-gen-image-prompt/data/lora-catalog.md` để biết LoRAs nào available + scene triggers nào → inject `<lora:name:weight>` syntax + trigger words vào prompt.
+Read `~/Projects/home-server/forge/knowledge/lora-catalog.md` (SHARED hub knowledge) để biết LoRAs nào available + scene triggers nào → inject `<lora:name:weight>` syntax + trigger words vào prompt.
 
 ### Logic
 
@@ -339,7 +339,7 @@ Read `~/Projects/home-server/.claude/skills/st-gen-image-prompt/data/lora-catalo
 from pathlib import Path
 import re
 
-CATALOG = Path.home() / "Projects/home-server/.claude/skills/st-gen-image-prompt/data/lora-catalog.md"
+CATALOG = Path.home() / "Projects/home-server/forge/knowledge/lora-catalog.md"
 catalog_text = CATALOG.read_text(encoding='utf-8')
 
 # Parse catalog rows (simplified — extract from markdown tables)

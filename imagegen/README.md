@@ -25,9 +25,11 @@ repo doesn't re-hand-roll (and re-break) the same SDK transport.
 - A prompt builder. It does not know your domain. Callers pass a
   fully-constructed prompt.
 - A router. It does not decide "Forge vs cloud" — the *caller's skill* does.
-- A Forge/local replacement. Forge stays where it is; `imagegen` is the cloud
-  lane only. (A `ForgeProvider` *could* be added — see §7 — but is intentionally
-  not built in v1.)
+- The Forge EXPERT lane. `imagegen` now ships a `ForgeProvider` (the simple
+  single-call cacheable lane, §7), but the deep multi-step Forge expertise —
+  per-seed loops, ADetailer/ControlNet orchestration, iterate-and-judge — lives in
+  the `gen-fulfill` skill driving `forge_engine` directly (§10), NOT in this package.
+  imagegen owns transport; the iterate-and-judge loop is orchestration.
 - A daemon. It's a CLI. State lives in SQLite, not a process.
 
 Why a CLI and not an MCP server: image gen is an occasional, explicit action,
@@ -109,6 +111,7 @@ imagegen "..." --quality high --count 4 --dry-run
 | `--project TAG` | "" | Ledger attribution. Always set it. |
 | `--no-cache` / `--force` | off | Skip lookup **and** store. |
 | `--env-file PATH` | — | `setdefault` load a `.env` (never clobbers exported vars). |
+| `--extra-json JSON` | "" | JSON object merged verbatim into the provider payload (Forge: `sampler_name`/`steps`/`cfg_scale`/`override_settings`/`alwayson_scripts`). The only path to `GenSpec.extra`. GPT Image 2 ignores unknown keys. |
 | `--dry-run` | off | Print spec + cost, no call. |
 
 ### 4a. Batch mode (50% cost discount, 24h async)
@@ -190,11 +193,14 @@ the only tracked env file.
 
 ## 7. Extending
 
-### Add a provider — worked example: `ForgeProvider` (intentionally not in v1)
+### Add a provider — `ForgeProvider` (BUILT — `providers/forge.py`)
 
-This is the LE local lane (`Learning_English/scripts/sd_client.py`, Forge A1111
-`POST /sdapi/v1/txt2img`). Building it later requires **no change to the core or
-to `GenSpec`** — that's the proof the seam is right:
+The local Forge lane. Shipped 2026-06-21 with **no change to the core or to
+`GenSpec`** — the proof the seam is right. It builds on `imagegen.forge_engine` (the
+shared Forge client of record) and rides everything Forge-specific through
+`spec.extra` (`sampler_name`, `steps`, `cfg_scale`, `override_settings`,
+`alwayson_scripts` for ADetailer / single-image ControlNet); `edit_ref` → img2img.
+The deep multi-step expertise is NOT here — that is orchestration, see §10. Sketch:
 
 ```python
 # src/imagegen/providers/forge.py
@@ -254,9 +260,9 @@ so existing providers and callers are untouched.
 **Internal** (may change without notice): cache file layout, DB schemas,
 provider internals, module boundaries below the CLI.
 
-Versioning intent: semver-ish. v1 = this contract. Deferred to a later version
-(documented here so nobody re-litigates): retry/backoff, OpenAI Batch API,
-multi-store dedup, `ForgeProvider`.
+Versioning intent: semver-ish. v1 = this contract. Now SHIPPED beyond v1:
+`ForgeProvider` (§7), the OpenAI Batch API (§4a), and the local async
+request/fulfill lane (§10). Still deferred: retry/backoff, multi-store dedup.
 
 ---
 
@@ -284,6 +290,34 @@ Therefore:
 - The single moderation-filter for the edit path lives in one place
   (`providers/gpt_image_2.py::edit`). If the SDK changes which params `edit`
   rejects, that's the **only** line to touch — across all consumers.
+
+---
+
+## 10. The local async lane — forge_engine, queue, gen-art / gen-fulfill
+
+Beyond the cloud CLI, the hub has a LOCAL Forge lane with deeper expertise than one
+CLI call can carry. Two hub-internal modules + two skills:
+
+- `imagegen.forge_engine` — the single Forge client of record (txt2img / img2img,
+  checkpoint/VAE switching, ADetailer/ControlNet payloads). `ForgeProvider` is a thin
+  wrapper over it; the `gen-fulfill` skill imports it directly for the expert lane.
+- `imagegen.queue` — the async request protocol: a `Ticket` dataclass + a filesystem
+  queue (`inbox`/`processing`/`done`/`failed`) + a learning index. The QUEUE lives
+  **outside every repo** at `~/.local/share/imagegen-queue/` (override
+  `IMAGEGEN_QUEUE_DIR`) — tickets carry the requesting project's raw (possibly 18+)
+  prompt, which must never enter a repo. The index stores spec **hash + settings +
+  verdict, never the prompt**.
+- `gen-art` (global skill) — the universal front door. Any project drops a
+  `.claude/imagegen/profile.toml`; gen-art routes cloud → this CLI (sync) or Forge →
+  a queued ticket. Zero per-project clones.
+- `gen-fulfill` (home-server skill) — drains the Forge queue with the hub's recipes
+  (presets + brain), writes results + a receipt back to the project, crystallizes
+  winning recipes into presets.
+
+These modules are hub-internal — **NOT part of the §8 stable CLI contract**. The
+engine split is deliberate: anything needing >1 call, >1 endpoint, or pre-/post-
+processing is ORCHESTRATION and lives in `gen-fulfill`, never in a provider — that is
+what keeps this package's transport seam intact.
 
 ---
 

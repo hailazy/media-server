@@ -12,6 +12,7 @@ Exit codes (STABLE — see README):
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -52,6 +53,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    dest="partial_images", metavar="0-3")
     p.add_argument("--edit-ref", type=Path, default=None,
                    help="reference image → edit/img2img mode")
+    p.add_argument("--extra-json", default="", dest="extra_json",
+                   help="JSON object merged verbatim into the provider payload "
+                        "(provider-specific: e.g. Forge sampler_name/steps/cfg_scale/"
+                        "override_settings/alwayson_scripts). The only path to GenSpec.extra.")
     p.add_argument("--prepend-file", type=Path, default=None,
                    help="prepend this file's text + blank line to the prompt "
                         "(style anchors live in the CALLER's repo, not here)")
@@ -101,6 +106,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 4
 
+    try:
+        extra = json.loads(args.extra_json) if args.extra_json else {}
+        if not isinstance(extra, dict):
+            raise ValueError("--extra-json must be a JSON object")
+    except (json.JSONDecodeError, ValueError) as exc:
+        print(f"ERROR: bad --extra-json: {exc}", file=sys.stderr)
+        return 1
+
     spec = GenSpec(
         prompt=prompt,
         provider=args.provider,
@@ -116,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         stream=args.stream,
         partial_images=args.partial_images,
         edit_ref=args.edit_ref,
+        extra=extra,
     )
 
     est = provider.estimate_cost(spec)
