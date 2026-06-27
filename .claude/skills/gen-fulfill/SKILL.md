@@ -1,6 +1,7 @@
 ---
 name: gen-fulfill
-description: "Resolve queued local-Forge image-generation tickets on the home-server hub, one by one, with deep Forge expertise (NoobAI recipes, ADetailer, ControlNet, checkpoint/VAE switching, img2img, per-seed loops). Reads tickets from the external image-gen queue, generates, judges, writes results + a receipt back to each ticket's destination, and crystallizes winning recipes. USE THIS whenever Hải says 'fulfill the image queue', 'process gen tickets', 'gen-fulfill', 'drain the forge queue', 'resolve image requests', or after the gen-art skill reports it queued a Forge ticket. This is the ONLY place the hub's Forge expertise lives — satellites just file tickets."
+model: sonnet
+description: "Drain the home-server local-Forge image-ticket queue with deep Forge expertise (NoobAI, ADetailer, ControlNet, img2img, per-seed loops). USE on 'fulfill the image queue', 'process gen tickets', 'gen-fulfill', 'drain the forge queue', 'resolve image requests', or after gen-art queued a Forge ticket. The ONLY place the hub's Forge expertise lives."
 argument-hint: "[--all] [--ticket <id|path>] [--max N] [--dry-run]"
 allowed-tools: Bash, Read, mcp__haingt-brain__brain_recall, mcp__haingt-brain__brain_save
 ---
