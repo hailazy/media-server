@@ -1,0 +1,35 @@
+# Preset: noobai-portrait
+# Character portrait / avatar tier. Soft shading, detailed face, natural depth.
+# Contrast with noobai-illustration which uses cel shading + limited palette for
+# game-art/pixel work — that recipe is WRONG for persona avatars and expressive
+# character portraits (produces flat/cheap look).
+#
+# Validated use: ST persona avatars, character face shots.
+
+schema = 1
+name = "noobai-portrait"
+description = "NoobAI-XL eps, portrait tier, soft shading + natural depth. For character avatars and persona portraits — NOT game/sprite art."
+
+# ── engine settings ──
+checkpoint_match = "NoobAI-XL-v1.1"
+vae = "None"
+clip_skip = 1
+sampler = "Euler"          # non-ancestral: more controlled than Euler a for portraits
+scheduler = "Karras"
+steps = 30
+cfg = 5.0                  # softer than illustration (7) — avoids harsh edges
+size = "832x1216"          # SDXL portrait
+
+# ── prompt scaffold ──
+quality = "masterpiece, best quality, amazing quality, newest, very aesthetic, absurdres"
+style_positive = "soft shading, illustration, detailed face, detailed eyes, natural lighting, soft shadows, depth, anime portrait"
+style_bg = "simple background, gradient background, soft background"
+style_negative = "cel shading, flat color, limited palette, (bold outline:1.2), hard shadows, strong chiaroscuro, rim light, backlight, high contrast, dark background, harsh lighting, watermark, artist name, text, logo, realistic, 3d, blurry, depth of field, bokeh"
+
+# ── expert defaults ──
+adetailer = ["face"]       # hands pass skipped — portrait crop won't show hands
+
+[notes]
+contrast_with = "noobai-illustration (cel shading + pixel-art value-force — wrong for portraits)"
+cfg_note = "cfg 5 keeps shading soft; bump to 6 if definition goes muddy"
+sampler_note = "Euler (not Euler a) — ancestral adds noise that flatters illustration but muddies portrait detail"

@@ -1,0 +1,14 @@
+schema = 1
+project_tag     = "home-server"
+default_backend = "forge"
+
+[anchor]
+file = "anchor.txt"
+
+[forge]
+preset       = "noobai-portrait"
+dest         = "sillytavern/data/default-user/User Avatars"
+lora         = []
+negative     = ""
+sfw_firewall = "nsfw, nude, explicit, topless, bare breasts, nipples"
+judge        = "face clear and natural, colors soft/muted, youthful and expressive, proper head-and-shoulders framing"

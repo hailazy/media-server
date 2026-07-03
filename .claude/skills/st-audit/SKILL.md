@@ -1,5 +1,6 @@
 ---
 name: st-audit
+model: sonnet
 description: "Audit current SillyTavern config — explain settings, surface non-defaults, recommend changes for a goal. Read-only."
 argument-hint: "[<setting-key> | goal \"<text>\"]"
 allowed-tools: Bash, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path

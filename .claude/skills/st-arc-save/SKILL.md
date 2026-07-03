@@ -1,5 +1,6 @@
 ---
 name: st-arc-save
+model: sonnet
 description: "Bake a completed RP arc into a SillyTavern lorebook as persistent memory. Run after each arc concludes."
 argument-hint: "[<arc-title>] [--char-bound] [--char <CharName>] [--no-brain]"
 allowed-tools: Bash, Read, Edit, Write, AskUserQuestion, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo

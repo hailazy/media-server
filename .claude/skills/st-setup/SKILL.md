@@ -1,5 +1,6 @@
 ---
 name: st-setup
+model: sonnet
 description: "Onboard a SillyTavern character — set SD visual baseline + audit. Optional: redistribute card fields, generate expressions, build lorebook."
 argument-hint: "<CharName> [--adv] [--expr] [--lore] [--all] | --audit"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character, mcp__st__st_list_characters, mcp__st__st_save_worldinfo

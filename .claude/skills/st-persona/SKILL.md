@@ -1,5 +1,6 @@
 ---
 name: st-persona
+model: sonnet
 description: "Convert a SillyTavern character into a user persona — or create a new persona from scratch with --new. Migrates/builds visuals, lorebook link, avatar."
 argument-hint: "<CharName> [--new | --remove]"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character

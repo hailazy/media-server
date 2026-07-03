@@ -1,5 +1,6 @@
 ---
 name: st-gen-image-prompt
+model: sonnet
 description: "Build ST image gen prompt — booru tags from chat scene"
 argument-hint: "[CharName] [--describe '<text>'] [--last N] [--no-clipboard]"
 allowed-tools: Bash, Read, mcp__st__st_get_character, mcp__st__st_get_settings, mcp__st__st_get_recent_chat
