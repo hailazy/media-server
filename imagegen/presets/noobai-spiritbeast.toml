@@ -1,0 +1,47 @@
+# Preset: noobai-spiritbeast
+# A complete LOOK = engine settings + style prompt scaffold. DOMAIN-AGNOSTIC and
+# PUBLIC: pure recipe, no project identity / character / NSFW. A consuming project
+# references this by name in its .claude/imagegen/profile.toml; the project's own
+# anchor.txt supplies the identity that rides on top of this style.
+#
+# Lineage: clone of noobai-illustration (NoobAI-XL eps, value-force lighting) with
+# two deltas for glow-carrying creature registers (broodkeeper art-proof, 2026-07-14):
+#   1. style_negative drops "glow, bloom" — the register's emissive markings/aura ARE
+#      the subject; the stock negative suppressed them (false-negative on register tests).
+#   2. adetailer = [] — face/hands passes are meaningless on non-humanoid creatures
+#      (smoke test 2026-07-10).
+# For pure-flat PART generation (no glow — glow rides an overlay layer), use the
+# stock noobai-illustration instead.
+
+schema = 1
+name = "noobai-spiritbeast"
+description = "NoobAI-XL eps, illustration tier, value-force lighting, glow-permissive (emissive markings/aura allowed). Quality block at END with emphasis."
+
+# ── engine settings (inlined into each ticket so it is self-contained) ──
+checkpoint_match = "NoobAI-XL-v1.1"   # substring; resolved against mounted models
+vae = "None"                          # force the baked VAE (NoobAI ships one)
+clip_skip = 1
+sampler = "Euler a"                   # ancestral; pixel-downscale friendly
+scheduler = "Karras"
+steps = 28
+cfg = 7.0                             # 7 gives crisper outlines than 6 (sweep 2026-06-20)
+size = "832x1216"                     # SDXL portrait
+
+# ── prompt scaffold (generic; the project anchor supplies identity) ──
+# Assembly order (NoobAI, load-bearing): count+age → IDENTITY(anchor) → subject →
+# style_positive → style_bg → (((quality))) at the END. See forge/knowledge/noobai-conventions.md.
+quality = "masterpiece, best quality, amazing quality, newest, very aesthetic, absurdres"
+style_positive = "cel shading, hard shadows, cast shadow, single light source, strong chiaroscuro, high contrast, rim light, backlight, (bold outline:1.2), flat color, limited palette"
+style_bg = "dark grey background, simple background"
+style_negative = "smooth shading, ambient occlusion, subsurface scattering, gradient, soft shading, blurry, depth of field, bokeh, lens flare, chromatic aberration, realistic, 3d, detailed background, white background, black background, high-key, blown out, hatching, screentone, halftone, watermark, artist name, username, logo, web address"
+
+# ── expert defaults ──
+adetailer = []                        # creatures: face/hands passes are a no-op (2026-07-10)
+
+[notes]
+controlnet = "openpose forces LIMB-pose, NOT camera-view; faceless-silhouette→lineart forces view (brain d73a7334387a)"
+nonstandard_anatomy = "prompt-only hexapod/multi-leg ≈ 0% (0/20 sweep 2026-07-14) — model silently collapses to 4-leg prior, never monstrosities; use ControlNet lineart/silhouette or img2img from a sketch, NOT prompt weighting"
+glow_drift = "max-mass subject + heavy glow drifts molten/fire-engulfed/menace ~50-60%; when a warm-benevolent read is required, consumer anchor should add negatives (fire, flames, burning, molten, lava, red eyes, snarling) + positives (calm, serene)"
+pixelation = "post-process downscale (e.g. kCentroid) — NOT a gen setting; lives in the consuming project's pipeline"
+hires_fix = "OFF — re-softens edges, bad for the crisp value blocks this preset exists to produce"
+glow = "glow/bloom deliberately absent from style_negative — emissive subjects legal; do NOT reuse for flat part-gen (use noobai-illustration)"
