@@ -278,7 +278,7 @@ For any mode:
 
 4. **Output report** (markdown table or structured sections, scannable)
 
-5. **NEVER modify settings.json** — this skill is read-only by design.
+5. **Read-only by design** — never writes to settings.json.
 
 ---
 

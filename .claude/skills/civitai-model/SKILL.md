@@ -137,7 +137,7 @@ If unrecognized → display usage line from frontmatter and exit.
        -o '<target_path>/<filename>'
    "
    ```
-   Inside `podman unshare`, host user maps to namespace root → writes appear as container UID 1000 on host (subuid 525287). Forge reads natively. **Plain `curl` from host user fails with exit 23 (write error)** — verified 2026-05-07.
+   Inside `podman unshare`, host user maps to namespace root → writes appear as container UID 1000 on host (subuid 525287). Forge reads natively. **Plain `curl` from host user fails with exit 23 (write error).**
 
 7. **Verify**:
    - File exists + size matches metadata (within 1% tolerance for HTTP overhead)

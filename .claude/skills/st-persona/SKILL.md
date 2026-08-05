@@ -122,7 +122,7 @@ Gather fields via `AskUserQuestion` (one question per group — Hai's free-text 
    - Example: `1girl, japanese, mature_female, fair_skin, long_black_hair, brown_eyes`
    Show those rules inline in the prompt so Hai doesn't have to context-switch.
 
-7. **Negative tags** — optional. Default to st-setup's `NEG` constant (updated 2026-05-25 with framing guards): `lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark, text, multiple_characters, duplicate, close-up, extreme_close-up, cropped, partial_face, single_eye, from_behind, from_side, breasts_focus, torso_focus, body_focus, hair_over_face, hair_over_eyes, looking_away, looking_down`.
+7. **Negative tags** — optional. Default to st-setup's `NEG` constant: `lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark, text, multiple_characters, duplicate, close-up, extreme_close-up, cropped, partial_face, single_eye, from_behind, from_side, breasts_focus, torso_focus, body_focus, hair_over_face, hair_over_eyes, looking_away, looking_down`.
 
 **Assemble `PERSONA_DESC`** (same shape as Phase 2):
 ```

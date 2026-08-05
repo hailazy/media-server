@@ -122,7 +122,7 @@ Goal: redistribute bloated `description` content into specialized character card
 
 ### Step A: Read full card state
 
-**CRITICAL — dual-chunk gotcha (2026-05-25):** Cards downloaded from Chub/Janitor often carry BOTH `chara` (V2) and `ccv3` (V3) tEXt chunks. ST's reader prefers `ccv3` → patching only the first chunk found leaves the other stale and ST serves the OLD data even after restart. Collect ALL matching chunks; patch them ALL with identical content in Step D.
+**CRITICAL — dual-chunk gotcha:** Cards downloaded from Chub/Janitor often carry BOTH `chara` (V2) and `ccv3` (V3) tEXt chunks. ST's reader prefers `ccv3` → patching only the first chunk found leaves the other stale and ST serves the OLD data even after restart. Collect ALL matching chunks; patch them ALL with identical content in Step D.
 
 ```python
 import struct, base64, json
@@ -422,7 +422,7 @@ Print audit report:
 
 ## Phase 3: Expression Sprites (`--expr` or `--all`)
 
-**Non-humanoid char caveat (2026-05-26):** For faceless creatures (slug, leech, parasite, monster — no eyes/mouth/face anatomy), the 28 go-emotions tag set maps poorly. NoobAI produces 28 near-identical body shots since emotion vocabulary is face-centric. **Skip `--expr` for non-humanoid chars** — ST falls back to main avatar for all detected emotions automatically when `characters/<Char>/` is empty or absent. Cleaner than 28 lookalike sprites. Verified on Parasite redesign: deleting old pre-redesign sprite folder + skipping new gen gave a more coherent UI than forcing 28 worm variants.
+**Non-humanoid char caveat:** For faceless creatures (slug, leech, parasite, monster — no eyes/mouth/face anatomy), the 28 go-emotions tag set maps poorly. NoobAI produces 28 near-identical body shots since emotion vocabulary is face-centric. **Skip `--expr` for non-humanoid chars** — ST falls back to main avatar for all detected emotions automatically when `characters/<Char>/` is empty or absent. Cleaner than 28 lookalike sprites.
 
 **28 standard emotion labels (distilbert go-emotions):**
 `admiration, amusement, anger, annoyance, approval, caring, confusion, curiosity, desire, disappointment, disapproval, disgust, embarrassment, excitement, fear, gratitude, grief, joy, love, nervousness, optimism, pride, realization, relief, remorse, sadness, surprise, neutral`

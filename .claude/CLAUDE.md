@@ -14,9 +14,6 @@ Home server orchestrating self-hosted personal services. Single repo, modular se
 ## Project Values
 - **Reliability over features** — Prefer battle-tested approaches. Stability > novelty.
 - **Self-hosted first** — Avoid external dependencies. Privacy + control priority.
-- **Minimal impact** — Smallest necessary change. No over-engineering.
-- **No dirty state** — Verify changes work before marking task complete.
-- **Reversibility** — Significant changes must be undoable.
 
 ## Operations
 Scripts, tray indicator, and dashboard one-time setup ops live in `.claude/rules/operations.md` (auto-loads when working in `scripts/` or `dashboard/`).
@@ -34,11 +31,5 @@ Detailed gotchas live in path-scoped rule files — loaded automatically when wo
 - Forge model swaps trigger VRAM spikes — let `vram-guard.sh` validate
 
 ## Security
-**CRITICAL**: NEVER commit, push, or expose secrets, API keys, tokens, or credentials.
-
-- Use `.env` files per section, never hardcode
-- Verify `git diff --cached` before commit
-- `.gitignore` must cover `.env*`, `*.key`, `*.pem`, `dashboard/data/`, `dashboard/backups/`
+- `.gitignore` must cover `dashboard/data/`, `dashboard/backups/`
 - Dashboard backups contain admin password hash + encryption key usage — treat as secrets
-- ASK before committing sensitive-looking files
-- If secret leaked: STOP, alert user, revoke, remove from history
