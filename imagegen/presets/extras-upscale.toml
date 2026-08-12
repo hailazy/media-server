@@ -1,0 +1,39 @@
+# Preset: extras-upscale
+# NOT a look — a PROCESSING recipe. No diffusion model is loaded, no prompt is used.
+# Pure ESRGAN pass through Forge's Extras endpoint, for enlarging existing artwork
+# without re-generating it. DOMAIN-AGNOSTIC and PUBLIC.
+#
+# Use when the requirement is "same image, more pixels, register untouched" — e.g. a
+# source sheet that must be cut into parts and is below the project's master-scale law.
+# Do NOT use when the goal is added detail; that is img2img/hires, and it WILL redraw.
+
+schema = 1
+name = "extras-upscale"
+description = "Pure 2x ESRGAN upscale via Forge Extras API. Preserves flat colour blocks and outlines exactly; no re-generation, no hallucinated detail."
+
+# ── engine ──
+# The endpoint is NOT txt2img/img2img. Any checkpoint/sampler/steps/cfg/size fields on a
+# ticket carrying this preset are boilerplate and are ignored — the diffusion model is
+# never touched, so the pass is deterministic and seed-free.
+endpoint = "/sdapi/v1/extra-single-image"
+resize_mode = 0                       # 0 = scale by multiplier (1 = target w/h)
+upscaling_resize = 2                  # 2x default; see notes.scale_choice
+upscaler_1 = "R-ESRGAN 4x+ Anime6B"   # best for flat colour + bold outline
+upscaler_2 = "None"
+extras_upscaler_2_visibility = 0
+gfpgan_visibility = 0                 # face restore OFF — mangles stylised/non-human faces
+codeformer_visibility = 0
+upscale_first = false
+output_format = "png"                 # never re-encode to jpg; this is a source asset
+
+# Fallbacks if Anime6B is not registered, in order of preference:
+upscaler_fallbacks = ["4x-UltraSharp", "R-ESRGAN 4x+"]
+
+[notes]
+driver = "run_forge.py has NO extras path (as of 2026-08-04) — it only drives txt2img/img2img. An upscale-only ticket must be driven against the endpoint directly, or the driver needs an extras mode."
+scale_choice = "pick the multiplier from the SOURCE resolution, not the target. A 1536px JPEG source has ~1536px of real information; 4x invents 3/4 of the output. 2x is the safe ceiling for a compressed source."
+flat_colour = "the reason this beats any diffusion-based upscaler for cel/flat art: ESRGAN cannot invent texture in a flat block. Measured on a real sheet — flat 8x8 tiles kept std 0.10 vs source 0.10, i.e. unchanged."
+jpeg_source = "a bonus, not a risk: the pass removes mosquito noise around dark outlines and resolves the stroke as one clean edge. Expect the p99 pixel delta to sit on outlines — that IS the intended gain."
+colour_shift = "verify, do not assume. Downsample the output back to source size and compare means; expect well under 1 level per channel. A few levels of warm/cool bias is sub-perceptual, but a large shift means the wrong upscaler or an accidental restore-face pass."
+verification = "the honest check for 'did it re-generate?' is quantitative + a 1:1 crop. Mean abs delta and flat-tile std catch invented texture; eyeballing a fit-to-screen view does not."
+face_restore = "keep gfpgan/codeformer at 0 unless the subject is a photoreal human face. On stylised art they smooth linework and shift skin values."
