@@ -1,9 +1,9 @@
 ---
 name: civitai-model
 model: haiku
-description: "Search, download, and mine prompts from Civitai for Forge"
+description: "Search, download, and mine prompts from Civitai for the local Forge stack (LoRA, checkpoint, VAE, embedding). USE on 'find a LoRA for X', 'download model <id>', 'tải model Civitai', 'what prompts does this model use'."
 argument-hint: "search <query> | top-loras [base] | top-checkpoints [base] | download <id> [--version <vid>] | prompts <id> [--top N]"
-allowed-tools: Bash, AskUserQuestion, mcp__civitai__search_models, mcp__civitai__get_model, mcp__civitai__get_model_version, mcp__civitai__get_model_version_mini, mcp__civitai__get_model_versions_by_hashes, mcp__civitai__get_top_loras, mcp__civitai__get_top_checkpoints, mcp__civitai__get_model_images, mcp__civitai__get_image_generation_data, mcp__civitai__get_download_url, mcp__civitai__get_download_info, mcp__civitai__get_tags, mcp__civitai__get_creators, mcp__civitai__lookup_users, mcp__civitai__get_enums, mcp__civitai__get_current_user, mcp__civitai__check_permissions
+allowed-tools: Bash, Read, Edit, AskUserQuestion, mcp__civitai__search_models, mcp__civitai__get_model, mcp__civitai__get_top_loras, mcp__civitai__get_top_checkpoints, mcp__civitai__get_model_images, mcp__civitai__get_image_generation_data, mcp__civitai__get_download_url, mcp__civitai__get_download_info, mcp__civitai__get_enums, mcp__civitai__check_permissions
 ---
 
 # Civitai Model — Search, Download, Mine Prompts for Forge
@@ -27,8 +27,11 @@ DEFAULT_BASE_MODEL = "NoobAI"  # active stack base. Valid: NoobAI, Illustrious, 
 | `Checkpoint` | `Stable-diffusion/` |
 | `LORA` | `Lora/` |
 | `LoCon` | `Lora/` |
+| `DoRA` | `Lora/` |
 | `TextualInversion` | `embeddings/` |
 | `VAE` | `VAE/` |
+| `Controlnet` | `ControlNet/` |
+| `Upscaler` | `RealESRGAN/` (or `ESRGAN/` for legacy `.pth`) |
 
 ---
 
@@ -108,8 +111,7 @@ If unrecognized → display usage line from frontmatter and exit.
    - Returns `{<vid>: true/false}` per version. If `false` → version is gated (early access / membership required) → STOP, inform user, suggest a different version từ `get_model` output. Skip step 3-7.
    - If `true` → proceed.
 
-3. **Get download info**: `mcp__civitai__get_download_info(model_id=<id>, version_id=<vid>)`
-   - Returns: filename, file size, hash, download URL with auth template
+3. **Get download URL**: `mcp__civitai__get_download_url(version_id=<vid>)` — returns a token-bearing URL that needs no manual `Authorization` header, avoiding the header-quoting pitfall of hand-built curl auth. Cross-check filename/size/hash against `mcp__civitai__get_download_info(model_id=<id>, version_id=<vid>)`.
 
 4. **Display preview**:
    ```
@@ -127,30 +129,34 @@ If unrecognized → display usage line from frontmatter and exit.
    - Q: "Proceed with download?"
    - Options: "Download now" / "Cancel"
 
-6. **On confirm**, run inside `podman unshare` (REQUIRED — Forge model dirs owned by container subuid 525287, host user `haint` cannot write directly):
+6. **On confirm**, run inside `podman unshare` (REQUIRED — parent Forge model dir is owned by subuid 525287, `haint` cannot write into it directly). Use the token-bearing URL from `get_download_url` as-is — it already carries auth, so no manual `Authorization` header (and no header-quoting to get wrong):
    ```bash
-   set -a; source /home/haint/Projects/home-server/.env; set +a
    podman unshare bash -c "
      curl -L --fail --create-dirs \
-       -H 'Authorization: Bearer \$CIVITAI_API_KEY' \
-       '<download_url>' \
+       '<download_url_from_get_download_url>' \
        -o '<target_path>/<filename>'
    "
    ```
-   Inside `podman unshare`, host user maps to namespace root → writes appear as container UID 1000 on host (subuid 525287). Forge reads natively. **Plain `curl` from host user fails with exit 23 (write error).**
+   The `podman unshare` write lands owned by host user `haint` (644 perms) — the parent dir is what's subuid-owned, not the resulting file — and Forge (container UID 1000) reads it fine. **Plain `curl` from host user fails with exit 23 (write error)** because it can't write into that parent dir at all.
 
 7. **Verify**:
    - File exists + size matches metadata (within 1% tolerance for HTTP overhead)
    - If hash provided: `sha256sum <file>` matches Civitai-provided hash
+   - **Sanity-check the body isn't HTML**: `head -c 256 <file>` and confirm it doesn't start with `<!DOCTYPE` / `<html` — a gated or expired-token download can return a 200 OK login/redirect page instead of the model file, which `curl --fail` and the loose size tolerance won't catch on their own.
 
 8. **Post-download note**:
    - LORA / Embedding → Forge hot-reloads when used in prompt; no restart needed
-   - Checkpoint → either restart Forge container (`./scripts/down.sh forge && ./scripts/up.sh forge`) OR swap via API:
+   - Checkpoint → swap is optional to do now — Forge picks up the new checkpoint on its next start regardless. If swapping live, gate it: run `./scripts/vram-guard.sh` first (soft warn 13GB, hard refuse 15GB on the 16GB card — a live swap while Jellyfin is transcoding can OOM, exit 137). Then either restart the container (`./scripts/down.sh forge && ./scripts/up.sh forge`) OR swap via API:
      ```bash
      curl -X POST http://localhost:7860/sdapi/v1/options \
        -H "Content-Type: application/json" \
        -d '{"sd_model_checkpoint": "<filename without ext>"}'
      ```
+
+9. **Register LoRA in the catalog** (LORA / LoCon only — this is what drives `<lora:name:weight>` injection for `/st-gen-image-prompt` and the gen pipeline; a downloaded LoRA never added here is functionally invisible to them):
+   - Pull trigger words + a suggested weight from the `get_model` response (step 1).
+   - Read `forge/knowledge/lora-catalog.md`, follow its existing row format, and append a row for the new LoRA (name, trigger words, weight band, base model).
+   - If the catalog's format is unclear or the skill shouldn't write autonomously, instead print a ready-to-paste catalog row and tell the user to add it (or run `/st-gen-image-prompt` to register it).
 
 ---
 
@@ -163,13 +169,11 @@ If unrecognized → display usage line from frontmatter and exit.
 
 ### Steps
 
-1. **Get example images**: `mcp__civitai__get_model_images(model_id=<id>, limit=N)` (N default 5)
+1. **Get generation data in one call**: `mcp__civitai__get_image_generation_data(model_id=<id>, limit=N, sort="Most Reactions")` (N default 5) — this already returns only images that carry generation metadata, so there's no separate per-image loop and no manual-upload filtering to do.
+   - Extract per result: `prompt`, `negativePrompt`, `sampler`, `cfgScale`, `steps`, `Size`, `seed`, `Model`
+   - Fallback: if this returns nothing (e.g. model has no meta-tagged images), use `mcp__civitai__get_model_images(model_id=<id>, limit=N)` instead and note that per-image prompt data may be sparser.
 
-2. **For each image**: `mcp__civitai__get_image_generation_data(image_id=<iid>)`
-   - Extract: `prompt`, `negativePrompt`, `sampler`, `cfgScale`, `steps`, `Size`, `seed`, `Model`
-   - Skip images without `meta` data (manual uploads, not generated)
-
-3. **Display formatted**:
+2. **Display formatted**:
    ```
    ═══ Top Prompts — MatureWife-XL-v2 ═══
 
@@ -188,12 +192,16 @@ If unrecognized → display usage line from frontmatter and exit.
    ...
    ```
 
+3. **Reconciliation note**: mined prompts often carry `<lora:...>` tags and sampler/size settings tuned for a different setup than the local stack.
+   - For each `<lora:...>` tag in the mined prompt, check whether it exists locally (`forge/knowledge/lora-catalog.md` and `FORGE_LORA_PATH`). Flag any that don't, and offer `/civitai-model download <id>` for the missing ones — pasting the prompt as-is silently drops unknown LoRA tags.
+   - The mined Sampler/CFG/Steps/Size are informational only — do not retune the local ST baseline (Euler/karras — NOT "Euler a" — steps 35, CFG 5, 832×1216, 4x-AnimeSharp @ 0.25 denoise) to match them.
+
 4. **Footer**:
    ```
    To use a prompt:
      /st-gen-image-prompt --describe '<paste positive prompt above>'
-   Or paste directly into ST 🎨 Freestyle button.
    ```
+   Paste the prompt into the ST message textarea, then click 🎨 Freestyle (the Quick Reply is `/sd {{input}}`, which reads the textarea — not the clipboard or the button itself).
 
 ---
 
@@ -202,7 +210,7 @@ If unrecognized → display usage line from frontmatter and exit.
 | Case | Handling |
 |------|----------|
 | `search` returns empty | Display "No results — try broader query or check spelling" |
-| Model is paid/restricted | Civitai API returns 403 → display "This model requires unlocking via Civitai Buzz. Visit civitai.red/models/<id> in browser." |
+| Model is paid/restricted | Civitai API returns 403 → display "This model requires unlocking via Civitai Buzz. Visit https://civitai.com/models/<id> in browser." (try an alternate/mirror domain only if the canonical one is blocked) |
 | Type not in mapping table (e.g. Hypernetwork) | Ask user via AskUserQuestion to pick target dir from constants |
 | `CIVITAI_API_KEY` empty/missing | Stop, instruct: "Edit /home/haint/Projects/home-server/.env, then restart Claude Code via ./scripts/claude.sh" |
 | Forge container not running | Download still works — Forge picks up files on next start |

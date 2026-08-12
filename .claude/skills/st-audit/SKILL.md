@@ -3,12 +3,12 @@ name: st-audit
 model: sonnet
 description: "Audit current SillyTavern config — explain settings, surface non-defaults, recommend changes for a goal. Read-only."
 argument-hint: "[<setting-key> | goal \"<text>\"]"
-allowed-tools: Bash, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path
+allowed-tools: Bash, Read, mcp__st__st_get_settings
 ---
 
 # ST Audit — Discover & Explain Current Config
 
-Read-only audit of SillyTavern configuration. Surfaces what's currently configured, why each knob matters, and what to change for a given goal. **Does NOT modify anything** — feeds context into conversation so user decides next move.
+Read-only audit of SillyTavern configuration. Surfaces what's currently configured, why each knob matters, and what to change for a given goal. **Does NOT modify anything** — feeds context into conversation so user decides next move. Bash is present for the auditor script, `podman exec` source lookups, and playbook greps — read-only invocations only. Config changes are handed to `/st-setup`, `/st-persona`, or `/st-arc-save`, which own the write paths.
 
 **Why this exists:** ST has 100KB+ settings.json + 10+ extensions, each with sub-config. Most users don't know which knobs are load-bearing vs cargo-cult. This skill closes the discovery gap.
 
@@ -29,18 +29,22 @@ PLAYBOOK = /home/haint/Projects/home-server/sillytavern/PROMPT-PLAYBOOK.md
 
 ## Knowledge Source Order
 
-1. `PROMPT-PLAYBOOK.md` — 33 verified gotchas, the canonical local knowledge base. Always cite gotcha number when relevant.
+1. `PROMPT-PLAYBOOK.md` — the canonical local gotcha log (section 5). Cite the gotcha number when one applies.
 2. **Live settings via `mcp__st__st_get_settings()`** — current state (ground truth). Works while ST runs (no file-lock risk). Falls back to `Read SETTINGS` if MCP unavailable (ST container down).
 3. ST source defaults (read from `/home/node/app/public/scripts/extensions/<name>/index.js` via `podman exec` if needed).
 4. Built-in skill knowledge below (curated facts about load-bearing knobs).
 
 If knowledge sources conflict → live settings wins for "current value", playbook wins for "why it matters".
 
+**Treat the playbook's dates as load-bearing.** It is a snapshot, not a mirror — a gotcha recorded months ago may describe a config that has since been deliberately retired. Anything it asserts about a *current value* (a template's length, which mode is active, how many entries a map has) must be re-read live before you repeat it; only the *reasoning* travels reliably. When the playbook and live state disagree on a value, the interesting output is the divergence itself: say what changed and when, rather than flagging live state as wrong.
+
 ---
 
 ## Mode 1: Full Sweep (`/st-audit` no args)
 
 Read each domain via path-based MCP calls (full-tree read returns 70KB+, exceeds Claude's MCP token cap). Each call returns a JSON string of the subtree at that path.
+
+Pseudocode below — issue these as MCP tool calls, not as a runnable script:
 
 ```python
 import json
@@ -52,12 +56,24 @@ conn_mgr    = json.loads(mcp__st__st_get_settings(path="extension_settings.conne
 power_user  = json.loads(mcp__st__st_get_settings(path="power_user"))
 ext_all     = json.loads(mcp__st__st_get_settings(path="extension_settings"))
 
-# Disabled extensions are stored per-extension as <extension>.disabled (true/false),
-# not aggregated at a single key. Walk extension_settings for {disabled: true} entries.
-disabled_exts = [k for k, v in ext_all.items() if isinstance(v, dict) and v.get("disabled") is True]
+# Disabled extensions live in TWO places and neither is authoritative alone:
+#   - extension_settings.disabledExtensions — the aggregate list ST maintains
+#   - extension_settings.<name>.disabled    — a per-extension flag some set themselves
+# Check both and union them; reporting from only one silently under-reports.
+disabled_exts = sorted(set(ext_all.get("disabledExtensions") or []) | {
+    k for k, v in ext_all.items() if isinstance(v, dict) and v.get("disabled") is True
+})
 ```
 
 Produce a grouped report. Skip categories where everything is at default — focus attention on non-defaults.
+
+**Start with the layer auditor.** The per-domain reads above show each setting's value; they can't see when two settings *contradict* each other across layers, which is where the costly problems live (a preset directive outranking a card, a lorebook constant asserting what the card just banned, a permanent SD negative deleting anatomy from every scene). Run it first and fold the findings in:
+
+```bash
+python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-config.py --json
+```
+
+Read-only. Covers preset↔card precedence, card chunk consistency, lorebook `{{char}}` binding and always-on cost, and SD `character_prompts` hygiene. Detail on what each layer does: `/st-setup` → *The card is not the only layer*.
 
 ### Categories to audit
 
@@ -67,9 +83,8 @@ Produce a grouped report. Skip categories where everything is at default — foc
 - `scheduler` (expect `karras`)
 - `steps`, `scale` (CFG)
 - `prompt_prefix` (must start with quality tags)
-- `prompts['4']` — Mode 4 template length + first line
-- `character_prompts` — count entries + list keys
-- `character_negative_prompts` — count entries
+- `prompts` — a dict keyed by generation mode (`0`=CHARACTER, `1`=USER, `2`=SCENARIO, `3`=RAW_LAST, `4`=NOW, `5`=FACE, `7`=BACKGROUND, `8`–`10`=multimodal, `11`=FREE_EXTENDED, `-1`=MESSAGE, `-2`=TOOL). `6`=FREE has no template by design — it passes the prompt through. Report which modes have content and which are empty; **an empty template means that `/sd <mode>` aborts silently** (`generatePicture` returns early on an empty trigger with no toast), so an empty entry is either a retired mode or a broken command with no symptom.
+- `character_prompts` / `character_negative_prompts` — count + keys, and whether each key still has a `characters/<key>.png`; hygiene comes from the layer auditor above.
 
 **[2] Memory / Summary** (`extension_settings.memory`)
 - `source` (`main` = uses primary LLM, `extras` = separate)
@@ -88,18 +103,23 @@ Produce a grouped report. Skip categories where everything is at default — foc
 - `context.preset` (context template)
 - `max_context`, `response_length`
 - `prefer_character_prompt` / `prefer_character_jailbreak`
-- `user_avatar` (active persona)
+- Active persona: TOP-LEVEL `user_avatar` in settings.json — NOT under `power_user` (reading `power_user.user_avatar` always returns null and reads as "no persona selected" while one is active)
 
 **[5] Extensions State**
 - Walk `extension_settings.<name>.disabled` — list every extension with `disabled: true`
 - Highlight notable ones: `LALib` (slash command lib), `GuidedGenerations-Extension`, `memory`
 
-**[6] Quick Replies** (`quickReplyApi.config.setList`)
-- Per set: name, button count, auto-execute hooks
+**[6] Quick Replies** (`extension_settings.quickReplyV2`)
+- `config.setList` — the globally visible sets. Each element is `{set: "<name>", isVisible: bool}` where `set` is a **name string**, not the set object.
+- The buttons themselves live in `QuickReplies/<name>.json` (`qrList[]`), not in settings.json — read those files to report labels and commands.
+- `characterConfigs[<avatar>.png]` — per-character overrides. ST auto-creates an entry with an empty `setList` for every character it loads, so an empty one means nothing; don't report it as a finding.
+- Worth surfacing for any QR whose command uses `{{input}}`: that macro reads the message textarea (`macros.js`), so the button does nothing at all when the box is empty — and `/sd` swallows the empty case without a toast.
 
 **[7] Persona** (`power_user.personas`, `power_user.persona_descriptions`)
 - Active persona + linked lorebook
 - Total persona count
+- Report personas by avatar key, not display name — names are not unique and the avatar-keyed `persona_descriptions[<avatar>].description` is authoritative for visuals. When a display name maps to more than one avatar, flag it: any `identity-baselines/<DisplayName>.txt` is ambiguous for that pair. Leaf keys ending `.png` need the bracket form — see Mode 2.
+- `user_avatar` (top-level key, not `power_user.user_avatar`) can be `null`, meaning no persona is currently selected — report that state rather than showing a blank field.
 
 ### Output format
 
@@ -109,11 +129,11 @@ Produce a grouped report. Skip categories where everything is at default — foc
 ### 🟢 Image Gen
 - sampler: Euler ✓ (correct for NoobAI epsilon-pred)
 - scheduler: karras ✓
-- steps: 30 ✓ (>=28 required, gotcha 5.X)
+- steps: <live> (compare to playbook baseline; note divergence + when, do not flag live as wrong)
 - scale: 5 ✓ (CFG 4-5 for NoobAI)
 - prompt_prefix: "masterpiece, best quality..." ✓
-- Mode 4 template: 2144 chars (v8.2 — 5 hard rules only)
-- char_prompts: 4 entries [Naoko, Parasite, Helena Lin, Klee]
+- prompts: modes with content = [-2 TOOL, -1 MESSAGE, 7 BACKGROUND]; empty = [0,1,2,3,4,5,8,9,10,11] — 4/NOW empty by design since Magnum extraction retired
+- char_prompts: <N> entries [<keys>] — card-on-disk check per key
 
 ### 🟡 Memory/Summary
 - source: main ✓ (uses primary LLM)
@@ -123,8 +143,8 @@ Produce a grouped report. Skip categories where everything is at default — foc
 - position: ?, depth: ?, role: ?
 
 ### 🔴 Extensions
-- DISABLED: GuidedGenerations-Extension (diagnostic state, can re-enable)
-- ENABLED: LALib ✓ (required for /dom workaround)
+- DISABLED: <union of disabledExtensions and per-extension disabled flags, or "none">
+- ENABLED, notable: LALib (backs the /dom summarize workaround), GuidedGenerations-Extension
 
 ### Connection Profiles
 | Name | Preset | Model | API |
@@ -147,6 +167,8 @@ Use `🟢` (looks correct), `🟡` (notable but intentional), `🔴` (worth atte
 
 Parse `<key>` — accept dot-path (`sd.sampler`) or last segment (`prompt_builder` matches `extension_settings.memory.prompt_builder`).
 
+Leaf keys containing a dot — persona avatars, anything ending `.png` — must be addressed with the bracket form `parent.path.["literal.key"]`. A bare dot-path splits inside the key and silently returns nothing, which reads as unset.
+
 If ambiguous (multiple matches) → list candidates, ask user to disambiguate.
 
 ### Output
@@ -167,7 +189,7 @@ If ambiguous (multiple matches) → list candidates, ask user to disambiguate.
 - Pairs with `SkipWIAN: true` (redundant safety — RAW_BLOCKING already bypasses WIAN)
 - If you switch back to 0, restore SkipWIAN check
 
-**Source**: PROMPT-PLAYBOOK.md gotcha 5.33; ST source `/home/node/app/public/scripts/extensions/memory/index.js:507`
+**Source**: PROMPT-PLAYBOOK.md gotcha 5.33; ST source `extensions/memory/index.js` → `prompt_builders` enum + the `RAW_BLOCKING` branch in `summarizeChat`
 
 **Safe to change**: Only if changing summary architecture. Current value is load-bearing.
 ```
@@ -180,7 +202,7 @@ Parse natural language goal. Match against known goal categories:
 
 | Goal pattern | Relevant settings |
 |-------------|-------------------|
-| "image gen quality" / "ảnh đẹp hơn" | sd.sampler, scheduler, steps, scale, prompt_prefix, char_prompts, Mode 4 template |
+| "image gen quality" / "ảnh đẹp hơn" | sd.sampler, scheduler, steps, scale, prompt_prefix, char_prompts, identity-baselines/<Char>.txt + /st-gen-image-prompt, sd.styles (drift check) |
 | "summary clean" / "summary không bị bẩn" | memory.prompt_builder, SkipWIAN, promptInterval, source |
 | "RP voice" / "ít interrupt" / "tone" | instruct preset, context preset, char card PHI, AN, model temperature |
 | "model switching" / "profile" | connectionManager.profiles, selectedProfile, /profile slash command |
@@ -227,10 +249,11 @@ Embedded so skill works without re-reading PROMPT-PLAYBOOK every invocation. Upd
 
 **Image gen knobs**
 - NoobAI XL = epsilon-prediction → Euler/Karras/CFG5/steps≥28. NOT Euler a.
-- vpred models broken on ai-dock Forge image (gotcha 5.X) — stick with epsilon checkpoints.
+- NoobAI-XL v1.1 is epsilon-prediction; v-prediction checkpoints have not been validated on this Forge build — verify before recommending one.
 - prompt_prefix MUST start with `masterpiece, best quality, newest, absurdres, highres,`
-- Mode 4 (Last Message) template = `prompts['4']`. Current: v8.2, 2144 chars, 5 hard rules. Magnum picks tags from booru training.
 - char_prompts key = char filename WITHOUT `.png` (gotcha: `getCharaFilename()` strips ext)
+- char_prompts/negatives are appended to **every** gen for that character, subject or not. They hold only always-true appearance — pose, setting, framing and human-anatomy suppression are per-shot and belong in `.claude/skills/st-gen-image-prompt/data/identity-baselines/<Char>.txt`. Full reasoning: `/st-setup` → *The card is not the only layer*.
+- `sd.styles[]` records a saved prefix/negative pair. If a style has drifted from the live `prompt_prefix`/`negative_prompt`, selecting it from the dropdown overwrites them. Only `onStyleSelect` applies it, so a stale style is dormant, not active — report it as a trap rather than a fault.
 
 **Memory/Summary**
 - prompt_builder=1 (RAW_BLOCKING) bypasses prompt manager → clean summary prompt
@@ -250,7 +273,7 @@ Embedded so skill works without re-reading PROMPT-PLAYBOOK every invocation. Upd
 
 **Persona vs Character**
 - char_prompts has NO persona equivalent → visual tags must embed in `persona_descriptions[avatar].description` text
-- Active persona = `power_user.user_avatar` (filename of avatar PNG)
+- Active persona = TOP-LEVEL `user_avatar` in settings.json (filename of avatar PNG). It is NOT under `power_user` — `power_user.user_avatar` resolves to null even while a persona is active.
 - Persona-bound lorebook = `power_user.persona_descriptions[avatar].lorebook`
 
 ---
@@ -259,15 +282,10 @@ Embedded so skill works without re-reading PROMPT-PLAYBOOK every invocation. Upd
 
 For any mode:
 
-1. **Read live state**:
-   ```python
-   import json
-   with open("/home/haint/Projects/home-server/sillytavern/data/default-user/settings.json") as f:
-       s = json.load(f)
-   ```
+1. **Read live state via path-based MCP calls**, as shown in Mode 1 — one call per domain. Reading `settings.json` off disk works too and is the fallback when the container is down, but prefer MCP: it reflects unsaved in-memory state and avoids loading a 70KB+ tree to answer a question about one subtree.
 
 2. **Read PROMPT-PLAYBOOK.md** (skim relevant sections only — file is ~700 lines):
-   - Mode 1 full sweep → read sections 1-3 + 8 + 8.1 + 10 (gotcha index)
+   - Mode 1 full sweep → read sections 1-3 (settings baseline), 8.1 (summary workflow), 5 (gotcha log — scan headings, read only what matches), 11 (tools status)
    - Mode 2 single setting → grep playbook for the setting key
    - Mode 3 goal → match goal to playbook section, read that section
 
@@ -291,14 +309,3 @@ For any mode:
 | Setting key ambiguous in mode 2 | List candidates, ask user to pick. |
 | Goal text doesn't match any category | Show available categories, ask user to rephrase or pick closest. |
 | PROMPT-PLAYBOOK.md missing | Skill still works using built-in knowledge above; note playbook unavailable. |
-
----
-
-## Why This Skill, Not MCP Server
-
-- Pain is **discovery** (cognitive overload), not **control** (mechanical access)
-- Skill = read knowledge + explain. MCP server = expose ST operations to external agent. Different layers.
-- Skill 1-2h to build. MCP server 5-10h. Phase 1 capacity wins.
-- Skill outputs feed Claude Code conversation → user decides changes → applies via existing skills (`/st-setup`, `/st-persona`, `/st-arc-save`) or direct edits with confirmation.
-
-When to revisit MCP server: only if specific pain emerges that direct-file + skills can't cover.

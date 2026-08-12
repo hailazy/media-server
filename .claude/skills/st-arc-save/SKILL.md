@@ -3,7 +3,7 @@ name: st-arc-save
 model: sonnet
 description: "Bake a completed RP arc into a SillyTavern lorebook as persistent memory. Run after each arc concludes."
 argument-hint: "[<arc-title>] [--char-bound] [--char <CharName>] [--no-brain]"
-allowed-tools: Bash, Read, Edit, Write, AskUserQuestion, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo
+allowed-tools: Bash, Read, AskUserQuestion, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__haingt-brain__brain_save
 ---
 
 # ST Arc Save — Persistent Narrative Memory
@@ -61,9 +61,11 @@ import json
 with open("/home/haint/Projects/home-server/sillytavern/data/default-user/settings.json") as f:
     s = json.load(f)
 
-pu = s['power_user']
-active_avatar = pu.get('user_avatar', '')
-persona_name = pu.get('personas', {}).get(active_avatar, '')
+# user_avatar is a TOP-LEVEL key of settings.json — NOT under power_user.
+# Reading power_user.user_avatar always returns None and silently reports
+# "no persona" while one is active.
+active_avatar = s.get('user_avatar', '')
+persona_name = s['power_user'].get('personas', {}).get(active_avatar, '')
 
 print(f"Active persona: {persona_name!r} (avatar: {active_avatar!r})")
 ```
@@ -105,24 +107,48 @@ Optional advanced path (skip if too brittle): try to read summary from chat file
 import json
 
 if char_bound:
-    target_name = explicit_char or active_char  # from Phase 0
+    # ST injects ONLY the world named by the card's data.extensions.world —
+    # a book merely named after the char is never loaded. Read the link:
+    char = explicit_char or active_char  # from Phase 0
+    resp = mcp__st__st_get_character(name=char)
+    card = json.loads(resp) if isinstance(resp, str) else resp
+    target_name = (card.get('data', card).get('extensions') or {}).get('world', '')
+    if not target_name:
+        # Card has no linked book (e.g. a fresh import). Saving to worlds/<char>.json
+        # would report success on a file ST never reads. Stop and ask: link a book
+        # to the card first (in ST UI: card → lorebook icon), or switch to
+        # persona-bound. Do not invent a target.
+        ...
 else:
     # persona-bound (default)
     target_name = persona_name
 
-# Read world_names directly (small subtree)
-world_names = json.loads(mcp__st__st_get_settings(path="world_names")) or []
-# (world_names lives at the top level of settings.json's *response wrapper*, not inside settings.
-#  st_get_settings hits the wrapper-aware /api/settings/get and exposes top-level keys too.)
-target_exists = target_name in world_names
+# Existence check = try to LOAD it. A name-list membership test has too many
+# false-negative paths (case/spacing drift, response-wrapper shape, renamed
+# persona) and a false negative here would later REPLACE a real book with a
+# two-entry skeleton. Loading is the only test that can't lie:
+try:
+    wi_resp = mcp__st__st_get_worldinfo(name=target_name)
+    lb = json.loads(wi_resp) if isinstance(wi_resp, str) else wi_resp
+    target_exists = True
+except Exception:   # explicit not-found only — any other error should surface
+    lb = {"entries": {}, "name": f"{target_name} Lore"}
+    target_exists = False
 
-print(f"Target lorebook: {target_name} ({'existing' if target_exists else 'NEW'})")
-```
+print(f"Target lorebook: {target_name} ({'existing, ' + str(len(lb['entries'])) + ' entries' if target_exists else 'NEW'})")
 
-If lorebook doesn't exist, init skeleton (will be saved via `st_save_worldinfo` later):
-
-```python
-target_lb = {"entries": {}, "name": f"{target_name} Lore"}
+# Locate the existing Established State NOW — Phase 3 needs its content as input.
+# Match on the full target_name, not a first-token substring: "Naoko" and
+# "Naoko the Hive Queen" are different personas and must not update each other.
+established_uid, established_old = None, ''
+for uid, e in lb['entries'].items():
+    c = e.get('comment', '')
+    if 'Established State' in c and target_name in c:
+        established_uid, established_old = uid, e.get('content', '')
+        break
+if established_old:
+    print(f"Existing Established State [uid={established_uid}]:")
+    print(established_old)
 ```
 
 ---
@@ -133,13 +159,9 @@ Given the pasted summary text, produce 2 distinct outputs.
 
 ### Established State (cumulative facts, ~150 words)
 
-Distill the summary into present-tense facts about persona's CURRENT state. Cover:
-- Identity (name, age, key descriptors)
-- Current relationship/bond state with {{char}}
-- Family/social context
-- Home base / current location
-- Persistent ongoing conditions (pregnancies, transformations, oaths, contracts)
-- Cumulative effects from prior arcs (compressed)
+**Inputs: the pasted summary AND `established_old` from Phase 2.** This entry is cumulative across every arc — compose the NEW version by merging the old content with what this arc changed. Writing it from the new summary alone silently erases every fact arcs 1..N-1 established, which is exactly the loss this entry exists to prevent. When `established_old` is non-empty, start from it: keep every fact the new arc didn't change, update the ones it did, append the new ones.
+
+Cover only state that *changes across arcs* — bond/relationship state, location, persistent conditions (pregnancies, transformations, oaths), compressed cumulative effects. Identity and appearance already live in `persona_descriptions[<avatar>].description`, which injects on every turn regardless; restating them here pays for the same tokens twice (same one-rule-one-home discipline as `/st-setup`'s lorebook phase).
 
 **Tone:** factual, third-person, present-tense for ongoing state, past-tense for completed events.
 
@@ -147,14 +169,13 @@ Distill the summary into present-tense facts about persona's CURRENT state. Cove
 ```
 **{Persona}'s Current State (post-Arc {N}, established as ongoing context):**
 
-- {Persona} ({age}, {key descriptors}) is {{char}}'s {relationship}. {1-line bond description}.
-- {Family/social context line}
+- {Persona} is {{char}}'s {relationship}. {1-line bond description}.
 - {Home base / current location}
 - {Persistent condition 1}
 - {Cumulative effect from prior arcs}
 ```
 
-If lorebook already has Established State entry: this CONTENT REPLACES the old (cumulative update, not append). The LLM should integrate prior facts + new arc events.
+The composed content REPLACES the old entry body in Phase 4 — which is why the merge above is mandatory, and why Phase 5 prints old-vs-new for the user to eyeball before trusting it.
 
 ### Arc N — {Title} (event log, ~300-500 words)
 
@@ -194,28 +215,16 @@ ST hot-reloads on `mcp__st__st_save_worldinfo` and `mcp__st__st_save_settings` �
 ### Update or create entries
 
 ```python
-import json
+import json, re, shutil
 
-# Load (or init) target lorebook via MCP
-if target_exists:
-    wi_resp = mcp__st__st_get_worldinfo(name=target_name)
-    lb = json.loads(wi_resp) if isinstance(wi_resp, str) else wi_resp
-else:
-    lb = {"entries": {}, "name": f"{target_name} Lore"}
+entries = lb['entries']   # lb, established_uid loaded in Phase 2
 
-entries = lb['entries']
-
-# Auto-detect existing arc count
-existing_arcs = [e for e in entries.values() if 'Arc ' in e.get('comment', '')]
-next_arc_num = len(existing_arcs) + 1
+# Next arc number = max existing + 1, parsed from comments. len()+1 breaks the
+# moment any arc was deleted or numbered by hand (two "Arc 3"s).
+arc_nums = [int(m.group(1)) for e in entries.values()
+            for m in [re.search(r'Arc (\d+)', e.get('comment', ''))] if m]
+next_arc_num = max(arc_nums, default=0) + 1
 arc_label = f"Arc {next_arc_num} — {arc_title}"
-
-# Find existing Established State (update target)
-established_uid = None
-for uid, e in entries.items():
-    if 'Established State' in e.get('comment', '') and target_name.split()[0] in e.get('comment', ''):
-        established_uid = uid
-        break
 
 # Determine fresh uid for new entries
 existing_uids = [e['uid'] for e in entries.values()]
@@ -269,13 +278,23 @@ entries[str(arc_uid)] = make_entry(
 )
 print(f"Appended {arc_label} entry [uid={arc_uid}, {len(trigger_keywords)} keys]")
 
-# Write back via MCP — ST persists + reloads automatically
+# st_save_worldinfo REPLACES the whole file — guard the write:
+# 1. backup the current file (cheap, makes every mistake reversible)
+# 2. entry count must never DECREASE — this skill only updates or appends,
+#    so a shrinking book means something upstream went wrong; abort, don't save.
+worlds_dir = "/home/haint/Projects/home-server/sillytavern/data/default-user/worlds"
+if target_exists:
+    shutil.copy2(f"{worlds_dir}/{target_name}.json",
+                 f"{worlds_dir}/{target_name}.json.bak-arc{next_arc_num}")
+    before = len(json.load(open(f"{worlds_dir}/{target_name}.json"))['entries'])
+    assert len(entries) >= before, f"entry count would drop {before}→{len(entries)} — aborting"
+
 mcp__st__st_save_worldinfo(name=target_name, data=lb)
 ```
 
 ### Bind lorebook to persona (if persona-bound + just created)
 
-`active_avatar` ends in `.png` — the st-mcp path parser would split on the dot and corrupt the tree on a naked dotted path. Use bracket-escape syntax `["..."]` for the leaf key. (Background gotcha: see project CLAUDE.md "ST MCP server" entry, "Dotted-key gotcha + fix 2026-05-24".)
+`active_avatar` ends in `.png` — the st-mcp path parser would split on the dot and corrupt the tree on a naked dotted path. Use bracket-escape syntax `["..."]` for the leaf key. (Background: `.claude/rules/sillytavern.md` — the path-based-MCP rule; parser source: `_parse_path` in `sillytavern/mcp/st-mcp/src/st_mcp/server.py`.)
 
 ```python
 if not char_bound and not target_exists:
@@ -305,10 +324,23 @@ if not char_bound and not target_exists:
 ✓ Lorebook: worlds/{target_name}.json ({total} entries total)
 [✓ Persona binding: {persona} → {target_name}]
 
+Established State — old vs new (print both in full so the user can catch a lost fact NOW, while the .bak is one `cp` away):
+
+{established_old}
+---
+{established_state_content}
+
+Then run the layer auditor — this skill just created/updated a `constant: true` entry, the most expensive kind, and the auditor prices exactly that (always-on chars/turn, depth vs depth_prompt):
+
+```bash
+python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-config.py --json
+```
+
 Next:
 - ST hot-reloaded automatically — no restart needed
 - Verify in World Info panel → 2 new/updated entries visible
 - Start new chat with {{char}} → Established State always injects; Arc {N} triggers on backstory keywords
+- Rollback: `cp worlds/{target_name}.json.bak-arc{N} worlds/{target_name}.json`
 ```
 
 ---
@@ -338,8 +370,8 @@ This makes arc summaries searchable via `brain_recall` from any future Claude se
 |------|----------|
 | No active persona AND no `--char-bound` | AskUserQuestion → pick from list, OR auto-fallback to char-bound |
 | Persona-bound lorebook doesn't exist | Create new lorebook + bind in settings.json |
-| Established State exists but for different name | Search uses comment substring match; if mismatch, create new (don't conflate) |
-| Arc number collision (Arc 3 exists, user titles new "Arc 3") | Auto-increment to next free number; warn user |
+| Established State exists but for different name | Match requires the FULL `target_name` in the comment ("Naoko" must not update "Naoko the Hive Queen"); on mismatch, create new (don't conflate) |
+| Arc number collision (Arc 3 exists, user titles new "Arc 3") | Numbering is `max(existing Arc N) + 1` parsed from comments — survives deleted or hand-numbered arcs; warn user when their title implies a different number |
 | Summary is empty/too short | AskUserQuestion: continue anyway / abort / paste again |
 | User pastes summary in non-5-section format | Best-effort parse; warn that structure may be incomplete |
 
@@ -351,10 +383,10 @@ This makes arc summaries searchable via `brain_recall` from any future Claude se
 - `/st-persona <CharName>` → convert char to persona before saving arcs to persona-bound book
 - Recommended flow:
   ```
-  /st-setup Parasite --all                              # baseline
-  /st-persona Mother                                    # convert to Naoko persona
-  [RP arc 1 with Parasite, ~50-100 messages]
+  /st-setup <CharName>                                  # baseline (+ --lore if the char needs a primary book)
+  /st-persona <SourceChar>                              # convert a card into the user persona
+  [RP arc 1, ~50-100 messages]
   Memory panel → Summarize now → copy 5-section summary
-  /st-arc-save "Subway Encounter"                       # bake into Naoko.json
+  /st-arc-save "<Arc Title>"                            # bake into the persona's book
   [start new chat → Established State auto-loads]
   ```

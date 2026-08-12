@@ -12,12 +12,12 @@ Two modes:
 - **Convert** (default): Hai's flow — import char from Chub/Janitor → find interesting → decide "this is my persona" → convert. Migrates an existing `{{char}}` into a user persona.
 - **New** (`--new`): build a brand-new persona from scratch with no source character. Interactive Q&A for fields + Forge txt2img for the avatar.
 
-ST has no built-in equivalent for `char_prompts` on the persona side, so visual baseline must move INTO `persona_description` text (LLM extracts during Mode 4). This skill automates either path.
+ST has no built-in equivalent for `char_prompts` on the persona side, so the visual baseline must live in the `persona_description` text, where `/st-gen-image-prompt` reads it (avatar-keyed `power_user.persona_descriptions[<avatar>].description` is the authoritative visual source). This skill automates either path.
 
 **Usage:**
 ```
-/st-persona Parasite             # convert, KEEP original char file (default safe)
-/st-persona Parasite --remove    # convert AND delete original char file
+/st-persona Washa                # convert, KEEP original char file (default safe)
+/st-persona Washa --remove       # convert AND delete original char file
 /st-persona DemonLord --new      # create brand-new persona — Q&A + Forge avatar gen
 ```
 
@@ -27,8 +27,25 @@ ST has no built-in equivalent for `char_prompts` on the persona side, so visual 
 
 ```
 ST_DATA = /home/haint/Projects/home-server/sillytavern/data/default-user
-ST_SCRIPTS = /home/haint/Projects/home-server/scripts
+BASELINES = /home/haint/Projects/home-server/.claude/skills/st-gen-image-prompt/data/identity-baselines  # owned by /st-gen-image-prompt
 ```
+
+## What a persona actually spans
+
+A persona is not one field. Four things carry persona state, and three of them are keyed differently from what you'd expect — which is where the mistakes come from. `/st-setup` → *[The card is not the only layer](#config-layers)* covers the character side; this is the persona-side counterpart.
+
+| Piece | Keyed by | Watch for |
+|---|---|---|
+| `power_user.personas[<avatar>.png]` | **avatar filename** | value is the *display name*, and display names are not unique |
+| `power_user.persona_descriptions[<avatar>.png]` | **avatar filename** | holds description + `lorebook` link; the visual tag block lives in the description text |
+| `worlds/<lorebook>.json` | lorebook **name** | a full behavior layer — see below |
+| `$BASELINES/<DisplayName>.txt` | **display name** | collides when two personas share a name |
+
+**Display-name collision is the live hazard.** Two personas can both be named `Naoko` while pointing at different avatars and different bodies. Anything keyed by display name — the baseline `.txt`, a lorebook named after the persona — silently serves one persona's data to the other. When you need a persona's visuals, read the **avatar-keyed** `persona_descriptions[<avatar>].description` block; treat the `.txt` as a convenience copy that may be stale or belong to a namesake. When creating a persona whose display name already exists, say so and let the user pick a distinct name.
+
+**`{{char}}` inside a persona lorebook does not mean the persona.** World Info macros resolve against the active chat: `{{user}}` is the persona, `{{char}}` is whatever character is loaded. So an entry written as "`{{char}}` resides inside her colon" only reads correctly while chatting with the one card the author had in mind, and turns into nonsense the moment that persona is used elsewhere. Name the entity explicitly in persona lorebooks — the whole point of binding a book to a persona is that it travels across characters.
+
+**Constant entries follow the persona everywhere.** A `constant: true` entry in a persona lorebook injects on every turn of every chat that persona is active in. Established-state entries ("post-arc, already bonded") are the usual offenders: they contradict any fresh first-meeting greeting. Keep them keyed unless the state genuinely holds across all chats.
 
 ---
 
@@ -90,7 +107,7 @@ d = card.get('data', card)  # spec v3 nests under 'data', v2 flat
 
 **Branch logic:**
 - If `char_visual_pos` exists → use it for visual block
-- Else → LLM analyze card description and extract visual booru tags on the fly (positive only — negatives less critical for persona)
+- Else → LLM analyze card description and extract visual booru tags on the fly (positive only — negatives less critical for persona). The visual block is permanent and appended to every render, so keep it to always-true appearance (body, hair, eyes, skin, permanent features) — pose, setting, framing, and blanket exclusions like "no humans" belong in the per-shot baseline `.txt` that `/st-gen-image-prompt` writes, not here.
 
 ---
 
@@ -116,13 +133,13 @@ Gather fields via `AskUserQuestion` (one question per group — Hai's free-text 
 
 5. **Personality keywords** — optional, 1–2 anchors if Hai wants a specific feel. Skip → leave blank.
 
-6. **Visual booru tags (FACE_ID)** — REQUIRED for Forge avatar gen. Apply the face-scoping KEEP rules from `/home/haint/Projects/home-server/.claude/skills/st-setup/SKILL.md` lines 472–491:
+6. **Visual booru tags (FACE_ID)** — REQUIRED for Forge avatar gen. Apply the face-scoping **KEEP/DROP rule** from `/st-setup` → *Phase 3: Expression Sprites* (find the `# --- Face-scoped identity` comment banner in that phase's code block):
    - **KEEP**: subject count (`1girl`/`1boy`), ethnicity, age class (`mature_female`/`milf`/`teen`…), skin tone, hair (color/length/style), eye color, permanent facial features (mole/freckles/glasses/heterochromia)
    - **DROP**: breasts/body size, clothing & clothing-state, body atmosphere (sweat/steaming), role/occupation, pose, baked-in expressions (smile/blush/tongue_out…)
    - Example: `1girl, japanese, mature_female, fair_skin, long_black_hair, brown_eyes`
-   Show those rules inline in the prompt so Hai doesn't have to context-switch.
+   Show those rules inline in the prompt so Hai doesn't have to context-switch. This block becomes the permanent visual layer, appended to every future render of this persona — keep it to always-true appearance only; pose, setting, framing, and "no humans"-style exclusions belong in the per-shot baseline `.txt` that `/st-gen-image-prompt` writes, not here.
 
-7. **Negative tags** — optional. Default to st-setup's `NEG` constant: `lowres, worst quality, bad anatomy, deformed_face, extra_eyes, watermark, text, multiple_characters, duplicate, close-up, extreme_close-up, cropped, partial_face, single_eye, from_behind, from_side, breasts_focus, torso_focus, body_focus, hair_over_face, hair_over_eyes, looking_away, looking_down`.
+7. **Negative tags** — optional. Default = the `NEG` constant in `/st-setup` → *Phase 3: Expression Sprites* (read it from that code block at run time, don't copy it verbatim — it drifts).
 
 **Assemble `PERSONA_DESC`** (same shape as Phase 2):
 ```
@@ -232,7 +249,7 @@ Scan card for hardcoded `{{user}}` gender assumptions ("{{user}}'s cock", "her b
 
 ## Phase 3: Migrate (via MCP, no container restart)
 
-`mcp__st__st_save_settings` routes through ST's save handler — no race with `saveSettingsDebounced`. Container stays up.
+`mcp__st__st_save_settings_path` routes through ST's save handler — the MCP server re-fetches settings, sets one path, and POSTs the bare dict to `/api/settings/save`, so there's no full-tree round trip and no race with `saveSettingsDebounced`. Container stays up.
 
 ### Avatar source
 
@@ -245,8 +262,9 @@ Branch by `new_mode`:
 ```python
 import shutil, os
 
-CHARACTERS = "/home/haint/Projects/home-server/sillytavern/data/default-user/characters"
-USER_AVATARS = "/home/haint/Projects/home-server/sillytavern/data/default-user/User Avatars"
+ST_DATA = "/home/haint/Projects/home-server/sillytavern/data/default-user"
+CHARACTERS = f"{ST_DATA}/characters"
+USER_AVATARS = f"{ST_DATA}/User Avatars"
 
 src_png = f"{CHARACTERS}/{CharName}.png"
 persona_avatar = f"{CharName} (Persona).png"
@@ -254,8 +272,15 @@ dst_png = f"{USER_AVATARS}/{persona_avatar}"
 
 os.makedirs(USER_AVATARS, exist_ok=True)
 
-# Copy avatar to User Avatars (direct file op — no API for this)
-shutil.copy2(src_png, dst_png)
+# ST's thumbnail cache invalidates by mtime (originalStat.mtimeMs > cachedStat.ctimeMs).
+# copy2 preserves the SOURCE file's mtime, which for an imported card is usually older
+# than the cached thumb — the persona picker would keep showing the old face.
+# Plain copy() stamps a fresh mtime instead.
+if os.path.exists(dst_png):
+    thumb = f"{ST_DATA}/thumbnails/persona/{persona_avatar}"
+    if os.path.exists(thumb):
+        os.remove(thumb)  # overwrite branch: force thumb regen even if mtime ties
+shutil.copy(src_png, dst_png)
 
 # Remove original IF --remove flag
 if remove_original:
@@ -265,7 +290,7 @@ if remove_original:
 
 #### Phase 3-new: Avatar via Forge txt2img (new mode)
 
-Reuses the established pattern from `/home/haint/Projects/home-server/.claude/skills/st-setup/SKILL.md` lines 414–533. **Pre-flight first** — if Forge is down, abort BEFORE writing any ST settings (no orphaned persona).
+Reuses the **Forge txt2img recipe** from `/st-setup` → *Phase 3: Expression Sprites* (framing tags, fixed seed, negative constant). **Pre-flight first** — if Forge is down, abort BEFORE writing any ST settings (no orphaned persona).
 
 ```python
 import requests, base64, os
@@ -341,8 +366,8 @@ else:
 
 persona_desc_obj = {
     'description': PERSONA_DESC,   # text built in Phase 2 (convert) or Phase 1-new (new)
-    'position': 0,                 # 0 = before char defs
-    'depth': 2,                    # @ depth 2
+    'position': 4,                 # AT_DEPTH — depth/role are only read when position is AT_DEPTH (4); other enum values (IN_PROMPT=0, TOP_AN=2, BOTTOM_AN=3, NONE=9) ignore both
+    'depth': 2,                    # @ depth 2 — strong presence but competes with per-turn anchors (vs IN_PROMPT=0: stable but diluted at the top of the prompt)
     'role': 0,                     # 0 = system role
     'lorebook': linked_book,       # auto-link if lorebook exists
     'title': '',
@@ -369,12 +394,30 @@ elif not new_mode:
     print(f"Kept char_prompts['{CharName}'] (char file still usable as {{{{char}}}} in other chats)")
 ```
 
+Clearing to `""` rather than deleting the key leaves an entry with no card behind it. That's harmless at runtime but it accumulates, and it makes later audits noisier — a key with no `characters/<name>.png` reads as either "orphan to clean up" or "card I'm about to restore", and nobody remembers which. Mention it in the report so the user can decide now, while the context is fresh.
+
+**The persona's visual block does not inherit the character's negative.** `char_prompts` has no persona equivalent — only the positive tags survive, embedded in the description text. If the source character's negative held anything load-bearing (body-shape guards like `masculine, male, flat_chest` for a female persona), it is simply gone after conversion. Say so explicitly rather than letting the user discover it through bad renders. If those guards matter, they belong in `sd.negative_prompt` (global) or in the per-shot negative — not silently dropped.
+
 **Ask user with AskUserQuestion:** "Set this as active persona now?" → if yes:
 ```python
 mcp__st__st_save_settings_path(path="user_avatar", value=persona_avatar)
 ```
 
 No container restart needed.
+
+---
+
+## Phase 3.5: Verify the config layers
+
+Persona changes ripple outward — a converted character leaves `char_prompts` behind, a linked lorebook keeps whatever `{{char}}` meant before, a `--remove` empties keys without removing them. Run the shared auditor before reporting so the summary reflects reality rather than intent:
+
+```bash
+python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-config.py
+```
+
+Read-only, safe while ST is up, non-zero exit when something is flagged. Relevant here: orphan `character_prompts` entries, persona-linked lorebooks that are missing or full of `{{char}}`, and constants injecting on every turn. Fold the findings into the report as recommendations — these are judgment calls, not auto-fixes.
+
+If the persona's display name already existed before this run, re-check `$BASELINES/` for a `.txt` under that name; it now serves two personas and one of them will get the wrong body.
 
 ---
 
@@ -386,15 +429,15 @@ No container restart needed.
 
 ✓ Avatar copied: characters/{CharName}.png → User Avatars/{CharName} (Persona).png
 [✓ Original char file removed (--remove flag) | ⚠ Original kept — char_prompts intact for future {{char}} RP]
-✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded)
-[✓ Lorebook linked: {CharName}.json | ⊘ No lorebook found — create with /st-setup --lore first]
+✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded, position=AT_DEPTH depth=2)
+[✓ Lorebook linked: {CharName}.json | ⊘ No lorebook found — bind one later with /st-arc-save once you have RP material, or hand-write worlds/<Name>.json and set persona_descriptions[<avatar>].lorebook via st_save_settings_path]
 [✓ Removed char_prompts['{CharName}'] (--remove flag) | ⊘ Kept char_prompts (char still available for {{char}} use)]
 [✓ Set as active persona | ⊘ Active persona unchanged]
 
 Next:
 - Reload ST (Ctrl+Shift+R)
 - Top-right persona dropdown → select '{CharName}' if not auto-active
-- Test image gen with Mode 4: persona visual tags should appear in prompt
+- Run /st-gen-image-prompt, paste the output into the 🎨 Freestyle QR (Mode FREE=6 pass-through), confirm the persona's tags survive into the render
 ```
 
 **New mode (`--new`):**
@@ -402,14 +445,14 @@ Next:
 === New Persona Created: {CharName} ===
 
 ✓ Avatar generated via Forge: User Avatars/{CharName} (Persona).png
-✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded)
-⊘ No lorebook linked — use /st-setup --lore later once you have RP material to bake
+✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded, position=AT_DEPTH depth=2)
+⊘ No lorebook linked — bind one later with /st-arc-save once you have RP material, or hand-write worlds/<Name>.json and set persona_descriptions[<avatar>].lorebook via st_save_settings_path
 [✓ Set as active persona | ⊘ Active persona unchanged]
 
 Next:
 - Reload ST (Ctrl+Shift+R)
 - Top-right persona dropdown → select '{CharName}' if not auto-active
-- Test image gen with Mode 4: persona visual tags should appear in prompt
+- Run /st-gen-image-prompt, paste the output into the 🎨 Freestyle QR (Mode FREE=6 pass-through), confirm the persona's tags survive into the render
 ```
 
 ---
@@ -420,7 +463,7 @@ Next:
 |------|----------|
 | char_prompts not set yet (convert) | LLM derives visual tags from card description on the fly |
 | Persona avatar already exists (both modes) | Ask user: overwrite, rename (e.g., "(Persona 2)"), or abort |
-| Lorebook doesn't exist (convert) | Skip lorebook link, suggest `/st-setup --lore` first |
+| Lorebook doesn't exist (convert) | Skip lorebook link; bind one later with `/st-arc-save` once there's RP material, or hand-write `worlds/<Name>.json` and set `persona_descriptions[<avatar>].lorebook` |
 | Expression folder exists (convert) | Keep — `characters/{CharName}/` survives even if char file removed (some forks render persona expressions) |
 | User wants to revert | Manual: delete persona avatar, copy from char folder back (convert), or just delete the generated PNG + drop the two `power_user.persona*` keys via MCP (new). Not implementing reverse — rare case, error-prone |
 | `--new` + `--remove` both passed | Abort with: *"--new creates from scratch; nothing to --remove. Pick one."* |
@@ -433,11 +476,12 @@ Next:
 ## Related Skills
 
 - `/st-setup <CharName>` → run first (convert flow) to establish char_prompts + (optional) lorebook before converting
+- A narrator/creature card (e.g. Parasite) is not persona material — persona is the body `{{user}}` wears, and narrator cards are wordless by design.
 - Convert flow:
   ```
-  /st-setup Parasite --all       # baseline + 28 expressions + lorebook
+  /st-setup <CharName> --lore    # baseline + lorebook (skip --expr/--all for non-humanoid — persona candidates are humanoid)
   [RP for a while, decide it's the persona]
-  /st-persona Parasite --remove  # migrate, delete original
+  /st-persona <CharName> --remove  # migrate, delete original
   ```
 - New-persona flow:
   ```

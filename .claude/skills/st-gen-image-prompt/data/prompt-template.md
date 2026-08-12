@@ -14,17 +14,6 @@ Reference templates cho skill output. Skill copy structure, fill in specific tag
 (((masterpiece,best quality,newest,absurdres,highres)))
 ```
 
-### Filled example (Naoko in garden)
-```
-1girl, japanese, mature_female, milf, housewife, plump, huge breasts, fair skin, long black hair,
-suburban japanese garden, afternoon,
-walking, hands clasped, looking at viewer,
-soft smile, half-closed eyes, parted lips,
-white blouse, pleated skirt, sandals,
-soft afternoon light, dappled sunlight, depth of field,
-(((masterpiece,best quality,newest,absurdres,highres)))
-```
-
 ## Template 2: Char close-up (face focus)
 
 ```
@@ -36,16 +25,6 @@ close-up, face focus,
 (((masterpiece,best quality,newest,absurdres,highres)))
 ```
 
-### Filled example
-```
-1girl, japanese, mature_female, milf, plump, fair skin, long black hair,
-close-up, face focus, looking at viewer,
-flushed cheeks, half-closed eyes, parted lips, tongue out,
-hair over one eye, sweat,
-soft lighting, golden hour, bokeh,
-(((masterpiece,best quality,newest,absurdres,highres)))
-```
-
 ## Template 3: Background only (no char)
 
 NO `1girl`/`1boy`. NO identity baseline.
@@ -54,14 +33,6 @@ NO `1girl`/`1boy`. NO identity baseline.
 [location/setting] [no humans],
 [notable elements], [composition tags],
 [lighting], [atmosphere], depth of field, bokeh,
-(((masterpiece,best quality,newest,absurdres,highres)))
-```
-
-### Filled example
-```
-empty japanese garden, no humans, pond with koi, stone lantern, cherry blossoms,
-wide shot, dynamic angle, depth of field,
-soft afternoon light, dappled sunlight, ray tracing,
 (((masterpiece,best quality,newest,absurdres,highres)))
 ```
 
@@ -156,20 +127,13 @@ soaking wet, glistening, slimy, mucus, dripping fluid, juicy,
 <lora:anima-preview-3-masterpieces-v5:0.5>, <lora:AddMicroDetails_Illustrious_v6:0.5>, addmicrodetails,
 (((masterpiece,best quality,newest,absurdres,highres)))
 ```
-(LoRA @0.75 + neg `x-ray, cross-section` = clean single view, no inset panel. Bump to 0.9 if you WANT the cutaway.)
+(Keep Oviposition_xray at ~0.75 in this skill's output — `/sd` Mode FREE carries no negative channel, so the `x-ray, cross-section` negative that would clean up the cutaway can't be attached here. That negative route only exists generating through Forge directly — see `/gen-fulfill`. Bump to 0.9 only there, if you WANT the cutaway.)
 
-## Negative Prompt Template (auto-prepended by ST)
+## Permanent Layer (auto-appended by ST — read live, never hardcode)
 
-ST auto-applies global `negative_prompt` + `character_negative_prompts[CharName]`. Skill does NOT need to inject negative.
+ST auto-applies, to EVERY gen for a character: global `prompt_prefix` + `negative_prompt`, plus that character's `extension_settings.sd.character_prompts[CharName]` (positive) and `character_negative_prompts[CharName]` (negative). These are read live via `mcp__st__st_get_settings(path=...)` in SKILL.md Phase 1 Step 3a (PERMANENT_LAYER) — never re-emit a tag already present there, and never hardcode this section's contents in a template, since it drifts every time `/st-setup` runs.
 
-Reference (ST default):
-```
-CyberRealistic_Negative_PONY_V2-neg, worst quality, old, low quality, lowres, signature, bad hands, mutated hands, anthro, furry, ambiguous form, semi-anthro, text, bubble chat, toon_(style)
-```
-
-Per-char negative (from settings.json `character_negative_prompts`):
-- Your Oblivious Mother: `muscular, masculine, male, slim, skinny, flat_chest, young_woman, teenager, child`
-- Parasite: (empty)
+Standing rule: never emit gore tags (`blood, gore, bleeding`) — they're in the global negative and Hải wants wet, not bloody.
 
 ## Tag count guidelines
 
