@@ -2,7 +2,7 @@
 
 Farm trading cards tự động cho account Steam, quản lý qua web UI. Container `home-asf`, image chính chủ `justarchi/archisteamfarm:released`.
 
-- **Web UI (ASF-ui):** http://localhost:1242 — localhost-only, không đặt IPCPassword
+- **Web UI (ASF-ui):** http://localhost:1242 — localhost-only. **IPCPassword bắt buộc** dù chỉ bind localhost: podman port-forward làm request đến ASF mang IP gateway container (non-loopback) → ASF đòi auth. Password nằm trong `data/config/ASF.json` (gitignored); sửa file phải qua `podman unshare` (container chown theo subuid).
 - **Config:** `data/config/` (gitignored — chứa Steam credentials, maFile, bot DB)
 - **Hướng dùng card đã chốt:** sell market lấy Steam wallet (mua game research), không craft badge
 
@@ -43,6 +43,7 @@ Chỉ phục vụ hoàn badge (đổi card trùng lấy card thiếu qua ASF lis
 
 ## Nếu muốn expose UI ra LAN/Tailscale
 
-1. Thêm `"IPCPassword": "<mật khẩu mạnh>"` vào `data/config/ASF.json` **trước**
-2. Đổi ports trong `compose.yml` thành `"${ASF_PORT:-1242}:1242"`
-3. `./scripts/down.sh asf && ./scripts/up.sh asf`
+IPCPassword đã có sẵn (bắt buộc, xem trên) nên chỉ cần:
+
+1. Đổi ports trong `compose.yml` thành `"${ASF_PORT:-1242}:1242"`
+2. `./scripts/down.sh asf && ./scripts/up.sh asf`
