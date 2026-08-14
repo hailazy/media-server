@@ -17,7 +17,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
-SECTIONS=(media forge sillytavern dashboard ebooks)
+SECTIONS=(media forge sillytavern dashboard ebooks asf)
 
 # Maps section → primary container name (mirrors tray.py state-detection logic)
 section_container() {
@@ -27,6 +27,7 @@ section_container() {
         sillytavern)  echo "home-sillytavern" ;;
         dashboard)    echo "home-dashboard" ;;
         ebooks)       echo "home-ebooks" ;;
+        asf)          echo "home-asf" ;;
     esac
 }
 

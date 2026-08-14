@@ -1,6 +1,6 @@
 #!/bin/bash
 # Home Server unified logs viewer
-# Usage: ./scripts/logs.sh {media|forge|sillytavern|dashboard|ebooks} [-f] [-n N] [services...]
+# Usage: ./scripts/logs.sh {media|forge|sillytavern|dashboard|ebooks|asf} [-f] [-n N] [services...]
 
 set -e
 
@@ -12,7 +12,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 usage() {
     cat <<EOF
-Usage: $0 {media|forge|sillytavern|dashboard|ebooks} [OPTIONS] [SERVICES...]
+Usage: $0 {media|forge|sillytavern|dashboard|ebooks|asf} [OPTIONS] [SERVICES...]
 
 Options:
   -f, --follow         Follow log output
@@ -31,7 +31,7 @@ fi
 shift
 
 case "$SECTION" in
-    media|forge|sillytavern|dashboard|ebooks) ;;
+    media|forge|sillytavern|dashboard|ebooks|asf) ;;
     *) log_error "Unknown section: $SECTION"; usage; exit 1 ;;
 esac
 

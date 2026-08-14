@@ -1,0 +1,3 @@
+# ASF runtime data — chứa Steam credentials (bot json, maFile, DB), never commit
+data/
+.env

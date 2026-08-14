@@ -30,19 +30,21 @@ def find_terminal() -> list[str] | None:
             return prefix
     return None
 
-SECTIONS = ["forge", "sillytavern", "dashboard", "media", "ebooks"]
+SECTIONS = ["forge", "sillytavern", "dashboard", "media", "ebooks", "asf"]
 SECTION_CONTAINERS = {
     "forge": "home-forge",
     "sillytavern": "home-sillytavern",
     "dashboard": "home-dashboard",
     "media": "jellyfin",
     "ebooks": "home-ebooks",
+    "asf": "home-asf",
 }
 
 CATEGORIES = {
     "ai": ("AI (Forge + ST)", ["forge", "sillytavern"]),
     "media": ("Media", ["media"]),
     "ebooks": ("Ebooks", ["ebooks"]),
+    "asf": ("ASF (Steam)", ["asf"]),
 }
 
 

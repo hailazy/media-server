@@ -10,6 +10,7 @@ Home server orchestrating self-hosted personal services. Single repo, modular se
 - `forge/` — Stable Diffusion WebUI Forge (shared image gen, multi-model: NSFW + educational)
 - `sillytavern/` — SillyTavern chat UI (calls Forge for image gen)
 - `dashboard/` — Homarr (service launchpad, status pings)
+- `asf/` — ArchiSteamFarm (Steam card farming; `data/` chứa Steam credentials — gitignored)
 
 ## Project Values
 - **Reliability over features** — Prefer battle-tested approaches. Stability > novelty.

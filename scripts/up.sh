@@ -1,6 +1,6 @@
 #!/bin/bash
 # Home Server unified startup script
-# Usage: ./scripts/up.sh {media|forge|sillytavern|dashboard|ebooks|all} [extra args]
+# Usage: ./scripts/up.sh {media|forge|sillytavern|dashboard|ebooks|asf|all} [extra args]
 
 set -e
 
@@ -12,7 +12,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 usage() {
     cat <<EOF
-Usage: $0 {media|forge|sillytavern|dashboard|ebooks|all} [extra args]
+Usage: $0 {media|forge|sillytavern|dashboard|ebooks|asf|all} [extra args]
 
 Sections:
   media         Jellyfin + arr stack + qBittorrent + Gluetun VPN
@@ -20,6 +20,7 @@ Sections:
   sillytavern   SillyTavern chat UI
   dashboard     Homarr dashboard
   ebooks        Calibre-Web Automated (e-book library)
+  asf           ArchiSteamFarm (Steam card farming)
   all           Start all bootstrapped sections
 
 Examples:
@@ -55,8 +56,8 @@ start_section() {
         check_nvidia_cdi_configuration
     fi
 
-    # Shared network needed for forge/sillytavern/dashboard/ebooks
-    if [[ "$section" =~ ^(forge|sillytavern|dashboard|ebooks)$ ]]; then
+    # Shared network needed for forge/sillytavern/dashboard/ebooks/asf
+    if [[ "$section" =~ ^(forge|sillytavern|dashboard|ebooks|asf)$ ]]; then
         ensure_home_network
     fi
 
@@ -85,13 +86,13 @@ main() {
     check_podman_compose
 
     case "$SECTION" in
-        media|forge|sillytavern|dashboard|ebooks)
+        media|forge|sillytavern|dashboard|ebooks|asf)
             check_section_env "$SECTION"
             start_section "$SECTION" "$@"
             ;;
         all)
-            # Order: forge first (warm GPU), media (heavy), then ST + dashboard + ebooks (light, CPU)
-            local order=(forge media sillytavern dashboard ebooks)
+            # Order: forge first (warm GPU), media (heavy), then ST + dashboard + ebooks + asf (light, CPU)
+            local order=(forge media sillytavern dashboard ebooks asf)
             local failed=0
             for s in "${order[@]}"; do
                 start_section "$s" "$@" || failed=$((failed + 1))

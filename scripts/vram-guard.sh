@@ -24,7 +24,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 usage() {
     echo "Usage: $0 check <section> [--force]"
-    echo "  section: media | forge | sillytavern | dashboard | ebooks"
+    echo "  section: media | forge | sillytavern | dashboard | ebooks | asf"
 }
 
 CMD="${1:-}"
@@ -47,7 +47,7 @@ fi
 
 # Non-GPU sections: pass through
 case "$SECTION" in
-    sillytavern|dashboard|ebooks)
+    sillytavern|dashboard|ebooks|asf)
         exit 0
         ;;
     media|forge)

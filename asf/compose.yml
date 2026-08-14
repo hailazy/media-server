@@ -1,0 +1,26 @@
+services:
+  asf:
+    image: docker.io/justarchi/archisteamfarm:released
+    container_name: home-asf
+    restart: always  # + podman-restart.service (user) để sống lại sau reboot — các section khác dùng unless-stopped nên không bị ảnh hưởng
+    ports:
+      - "127.0.0.1:${ASF_PORT:-1242}:1242"  # localhost-only — không set IPCPassword; nếu expose LAN thì BẮT BUỘC thêm IPCPassword vào ASF.json trước (xem README)
+    volumes:
+      - ./data/config:/app/config:z
+      - ./data/logs:/app/logs:z
+      # Plugin ngoài mount từng cái vào subdir riêng — mount đè cả /app/plugins sẽ che mất
+      # official plugins bundle trong image (ItemsMatcher, MobileAuthenticator, SteamTokenDumper)
+      - ./data/plugins/ASFEnhance:/app/plugins/ASFEnhance:z
+      - ./data/plugins/ASFAchievementManager:/app/plugins/ASFAchievementManager:z
+    environment:
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      - ASF_CRYPTKEY=${ASF_CRYPTKEY:-}
+    mem_limit: 1g
+    cpus: 1
+    networks:
+      - home-net
+
+networks:
+  home-net:
+    name: home-net
+    external: true

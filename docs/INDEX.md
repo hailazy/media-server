@@ -11,6 +11,7 @@ Self-hosted personal services orchestrated as **modular podman-compose sections*
 | `sillytavern/` | LLM chat UI with character cards, image-gen integration | http://localhost:8000 | [`sillytavern/README.md`](../sillytavern/README.md) |
 | `dashboard/` | Homarr — single pane of glass | http://localhost:7575 | [`dashboard/README.md`](../dashboard/README.md) |
 | `ebooks/` | Calibre-Web Automated — web UI + auto-ingest cho thư viện Calibre có sẵn | http://localhost:8083 | [`ebooks/README.md`](../ebooks/README.md) |
+| `asf/` | ArchiSteamFarm — Steam card farming + plugins | http://localhost:1242 | [`asf/README.md`](../asf/README.md) |
 
 Per-section READMEs cover ops, gotchas, and integration. The docs in this folder cover **cross-cutting** concerns + media-section deep-dives.
 
