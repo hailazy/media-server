@@ -15,6 +15,10 @@ services:
     environment:
       - TZ=${TZ:-Asia/Ho_Chi_Minh}
       - ASF_CRYPTKEY=${ASF_CRYPTKEY:-}
+      # Container-root như media stack (PUID=0 pattern): host thấy files thuộc haint
+      # → DR restore extract về owner haint là chạy được luôn, sửa config không cần podman unshare
+      - ASF_UID=0
+      - ASF_GID=0
     mem_limit: 1g
     cpus: 1
     networks:
