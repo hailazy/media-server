@@ -234,7 +234,7 @@ Matched category: Memory/Summary
 **Already optimized.** All 4 load-bearing settings match recommended values from gotcha 5.33.
 
 ### If still seeing problems
-- Check which OpenRouter provider served it — ST log prints `provider:` for the non-stream summary response. DeepInfra/GMICloud produce prose, word-salad or blank; the fix is `oai_settings.openrouter_quantizations: []` + `openrouter_providers: [DeepSeek, StreamLake]` (Alibaba moderates NSFW output → mid-stream `finish_reason: error`) in live settings AND every preset (PROMPT-PLAYBOOK gotcha 5.44).
+- Check which OpenRouter provider served it — ST log prints `provider:` for the non-stream summary response. DeepInfra/GMICloud produce prose, word-salad or blank; the fix is `oai_settings.openrouter_quantizations: []` + `openrouter_providers: [StreamLake, DeepSeek]` — order matters (Alibaba moderates NSFW output → mid-stream `finish_reason: error`; DeepSeek native silently returns empty content on some explicit full-context prompts, 2–3 s "finished") in live settings AND every preset (PROMPT-PLAYBOOK gotcha 5.44).
 - Check chat metadata — old `extra.memory` entries from prior bad summaries can contaminate next regen. Inspect `chats/<char>/<chat>.jsonl`.
 
 ### Reference
