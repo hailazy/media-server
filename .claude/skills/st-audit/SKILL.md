@@ -234,7 +234,7 @@ Matched category: Memory/Summary
 **Already optimized.** All 4 load-bearing settings match recommended values from gotcha 5.33.
 
 ### If still seeing problems
-- Check active model — DeepSeek tends to write prose-style continuations even with RAW_BLOCKING (RP-tuned). Switch to Magnum profile via QR `[📝 Summary]` button.
+- Check which OpenRouter provider served it — ST log prints `provider:` for the non-stream summary response. DeepInfra/GMICloud produce prose, word-salad or blank; the fix is `oai_settings.openrouter_quantizations: []` + `openrouter_providers: [Alibaba, DeepSeek, StreamLake]` in live settings AND every preset (PROMPT-PLAYBOOK gotcha 5.44).
 - Check chat metadata — old `extra.memory` entries from prior bad summaries can contaminate next regen. Inspect `chats/<char>/<chat>.jsonl`.
 
 ### Reference
@@ -258,7 +258,7 @@ Embedded so skill works without re-reading PROMPT-PLAYBOOK every invocation. Upd
 **Memory/Summary**
 - prompt_builder=1 (RAW_BLOCKING) bypasses prompt manager → clean summary prompt
 - promptInterval=0 → manual only (recommended). Auto-trigger contaminates context unpredictably.
-- DeepSeek RP-tuned → ignores "STOP. END OF ROLEPLAY" directive. Switch to Magnum for clean summary.
+- Prose/salad/blank summary → bad OpenRouter provider, not the model. Pin native providers + empty quantizations filter (gotcha 5.44). Magnum profile no longer exists (retired 2026-08-28).
 - Bad prior summary in `extra.memory` chat metadata → contaminates next regen. Clear it before retry.
 
 **STscript / Slash commands**

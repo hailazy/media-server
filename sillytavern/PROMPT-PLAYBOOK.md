@@ -2,7 +2,7 @@
 
 **Verified through 22+ tests on 2026-05-05.** All findings reproducible with seed 12345 unless noted.
 
-Stack: NoobAI-XL v1.1 (epsilon prediction) + Forge + ADetailer (face_yolov8n.pt) + SillyTavern QR pipes via Magnum profile switch.
+Stack: NoobAI-XL v1.1 (epsilon prediction) + Forge + ADetailer (face_yolov8n.pt) + SillyTavern QR pipes on a single DeepSeek profile (Magnum retired 2026-08-28, gotcha 5.44).
 
 ---
 
@@ -253,7 +253,7 @@ When prompt stacks 3+ POV/view tags (especially mixing internal + external views
 
 **Workaround — programmatic DOM click via LALib:**
 ```
-/profile timeout=5000 Magnum — Image Gen | /delay 1000 | /dom action=click "#memory_force_summarize" | /delay 30000 | /profile DeepSeek daily
+/dom action=click "#memory_force_summarize"
 ```
 
 LALib's `/dom action=click` dispatches native DOM `pointerdown`/`click`/`pointerup` events on the panel button → fires `forceSummarizeChat(false)` in user-event context (NOT slash-command context) → bypasses `is_send_press` lock. `/delay 30000` reserves 30s for Magnum 72B to finish before profile switches back.
@@ -262,7 +262,7 @@ LALib's `/dom action=click` dispatches native DOM `pointerdown`/`click`/`pointer
 - LALib must be enabled (provides `/dom`)
 - Summary uses `prompt_builder: 1` (RAW_BLOCKING) to bypass prompt manager — clean prompt, no WI/persona injection (DEFAULT path adds `personaDescription` system message that biases Magnum back into RP voice)
 - Summary auto-trigger DISABLED (`promptInterval: 0`) — manual control only via QR button. Auto-fire would use whatever connection is active at trigger moment → likely DeepSeek RP-tuned → continuation prose instead of structured summary.
-- DeepSeek RP-tuned IGNORES "STOP. END OF ROLEPLAY" directives in summary prompt, outputs narrative continuation. Magnum 72B compliant — `/profile` switch to Magnum is non-negotiable for summary path.
+- ~~DeepSeek RP-tuned IGNORES "STOP. END OF ROLEPLAY" directives~~ — held for v4 Chat on a random OpenRouter provider. Since 2026-08-28 the summary runs on the main DeepSeek profile with native providers pinned (gotcha 5.44); the profile switch is gone.
 
 **Stored config (settings.json):**
 ```
@@ -445,7 +445,7 @@ print(f"✓ Patched cache: {cache_path}")
 
 **QR cleanup (ImageGen.json):**
 - Removed: 📷 Scene, 👤 Char, 😊 Face, 🎭 Imp (Magnum-dependent)
-- Kept: 🌅 BG (Mode 7 still LLM-handled), 📝 Summary (Magnum compliance)
+- Kept: 🌅 BG (Mode 7 still LLM-handled), 📝 Summary (Magnum compliance) — both moved to DeepSeek on 2026-08-28, see gotcha 5.44
 - Added: 🎨 Freestyle (`/sd {{input}}` pass-through)
 
 ### 5.38 char_prompts emptied + Mode 0/1/2/4/5 templates emptied (2026-05-06)
@@ -792,6 +792,23 @@ This was previously misdiagnosed as "anal-oral content suppression" or "worm-fro
 
 ---
 
+### 5.44 Magnum profile retired entirely — DeepSeek single-profile + native provider pin (2026-08-28)
+
+**Decision:** Connection profile "Magnum — Image Gen" deleted. Every QR now runs on `DeepSeek daily` (`deepseek/deepseek-v4-pro-0813`). Preset `MagnumStrict` rebuilt as `OpenAI Settings/ImageGen.json` on DeepSeek (temp 0.7, reasoning low, max_tokens 4096, ctx 16384). QR set:
+- 🌅 BG → `/preset ImageGen | /sd background | /preset Default` (preset switch, no profile switch)
+- 📝 Summary → `/dom action=click "#memory_force_summarize"` (main API)
+- 🎨 Freestyle → `/sd {{input}}` (unchanged)
+
+**Root cause of the "DeepSeek can't summarize / blank swipes" incidents (08-26, 08-28) = OpenRouter provider roulette, not DeepSeek.** Non-stream responses log `provider:` in the ST container log; the Summary word-salad came from **DeepInfra** (fp8, uptime ~76%), the blank swipes from **GMICloud**. Replay ×6 on DeepInfra with ST's exact params: 1 refusal, 3 blank (reasoning 4–7k tokens → `finish=length`), 2 OK. Native endpoints (Alibaba, DeepSeek, StreamLake) were clean every time and are the cheapest ($0.58–0.66/M prompt vs $1.30–1.45).
+
+**Fix (live `oai_settings` + preset Default + preset ImageGen — preset trap):**
+- `openrouter_providers: ["Alibaba", "DeepSeek", "StreamLake"]`, `openrouter_allow_fallbacks: true`
+- `openrouter_quantizations: []` — **the pin is silently useless while this is non-empty**: ST sends `provider.quantizations: [fp8, fp16, bf16]`, the native endpoints report quant `unknown`, get filtered out, and the request falls back to GMICloud/DeepInfra anyway.
+- `power_user.prefer_character_prompt = true` → a card's `system_prompt` overrides the preset Main Prompt, so ImageGen's extractor instruction lives in custom prompt `imagegen_override` (system, injection depth 0) which cards cannot override. Without it DeepSeek narrated the scene instead of returning tags.
+- Memory prompt says "integrate prior summary" → a salad summary left in the box poisons the next run. Clear the Current summary box before re-summarizing.
+
+**Backups:** `settings.json.bak-2026-08-28-magnum-removal`, `OpenAI Settings/Default.json.bak-2026-08-28`. Supersedes the "GIỮ DUAL" verdict of 2026-05-05 and the "Magnum non-negotiable for summary" rule in 5.33.
+
 ## 6. Production Tag Templates
 
 ### Solo character emotion close-up (832×1216)
@@ -946,12 +963,12 @@ When ST QR triggers `/sd last`, Magnum reads this template + chat last message a
 
 ## 8.1. Summary Workflow (manual via QR button)
 
-Mode 4 template injects `{{summary}}` macro — for it to be useful, the chat summary must be regenerated with Magnum profile (compliant) when scene shifts. Auto-trigger DISABLED (`promptInterval: 0`) because auto-fire uses whatever connection is active at trigger moment → likely DeepSeek → ignores summary directive → produces continuation prose instead of structured recap.
+Mode 4 template injects `{{summary}}` macro — for it to be useful, the chat summary must be regenerated via the QR button (main DeepSeek profile, native providers pinned — gotcha 5.44) when scene shifts. Auto-trigger DISABLED (`promptInterval: 0`) because auto-fire uses whatever connection is active at trigger moment → likely DeepSeek → ignores summary directive → produces continuation prose instead of structured recap.
 
 **Manual workflow:** Click `[📝 Summary]` button in ImageGen QR set. STscript chain:
 
 ```
-/profile timeout=5000 Magnum — Image Gen | /delay 1000 | /dom action=click "#memory_force_summarize" | /delay 30000 | /profile DeepSeek daily
+/dom action=click "#memory_force_summarize"
 ```
 
 **Why `/dom action=click` instead of `/summarize`:** /summarize via slash command path silently fails due to STscript executor's `is_send_press` lock — see [gotcha 5.33](#533-stscript-path-silently-breaks-summarize--use-dom-actionclick-workaround-verified-2026-05-05). DOM click on the panel button bypasses the lock entirely.
@@ -1031,7 +1048,7 @@ sd['character_prompts']['Your Oblivious Mother'] = (
 | Text/speech bubbles in output | Negative missing | Add `text, speech_bubble, dialogue, caption` to negative |
 | Object on wrong body part | SDXL placement limit | Use spatial negative steering or img2img inpaint |
 | Summary textarea stays empty after `/summarize` | STscript executor locks `is_send_press` → /summarize times out silent | Use `/dom action=click "#memory_force_summarize"` (LALib) — see gotcha 5.33 |
-| Summary returns RP prose instead of structured recap | Active connection = DeepSeek (RP-tuned, ignores END ROLEPLAY directive) | Switch to Magnum profile before summary; QR `[📝 Summary]` does it auto |
+| Summary returns RP prose / word-salad / blank | OpenRouter routed to a bad provider (DeepInfra, GMICloud) — `openrouter_quantizations` non-empty makes the provider pin useless | `openrouter_quantizations: []` + pin Alibaba/DeepSeek/StreamLake in live + every preset; clear the summary box before retry — gotcha 5.44 |
 | Summary contaminated by persona/WI context | Default `prompt_builder` injects prompt manager content | Set `extension_settings.memory.prompt_builder: 1` (RAW_BLOCKING) |
 
 ---
