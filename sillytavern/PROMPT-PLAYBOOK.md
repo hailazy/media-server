@@ -802,7 +802,8 @@ This was previously misdiagnosed as "anal-oral content suppression" or "worm-fro
 **Root cause of the "DeepSeek can't summarize / blank swipes" incidents (08-26, 08-28) = OpenRouter provider roulette, not DeepSeek.** Non-stream responses log `provider:` in the ST container log; the Summary word-salad came from **DeepInfra** (fp8, uptime ~76%), the blank swipes from **GMICloud**. Replay ×6 on DeepInfra with ST's exact params: 1 refusal, 3 blank (reasoning 4–7k tokens → `finish=length`), 2 OK. Native endpoints (Alibaba, DeepSeek, StreamLake) were clean every time and are the cheapest ($0.58–0.66/M prompt vs $1.30–1.45).
 
 **Fix (live `oai_settings` + preset Default + preset ImageGen — preset trap):**
-- `openrouter_providers: ["Alibaba", "DeepSeek", "StreamLake"]`, `openrouter_allow_fallbacks: true`
+- `openrouter_providers: ["DeepSeek", "StreamLake"]`, `openrouter_allow_fallbacks: true`
+- **Alibaba dropped (2026-08-28, same night):** it runs output content moderation — an explicit RP stream dies mid-reply with `finish_reason: "error"` / `Upstream error from Alibaba: Output data may contain inappropriate content.` (HTTP 502 in the SSE, shown as an ST error toast). Intermittent (1 of 3 replays), and `allow_fallbacks` cannot rescue a stream that already started. DeepSeek + StreamLake finished the same prompt every time. Alibaba is fine for SFW/non-stream jobs only — never in the RP pin.
 - `openrouter_quantizations: []` — **the pin is silently useless while this is non-empty**: ST sends `provider.quantizations: [fp8, fp16, bf16]`, the native endpoints report quant `unknown`, get filtered out, and the request falls back to GMICloud/DeepInfra anyway.
 - `power_user.prefer_character_prompt = true` → a card's `system_prompt` overrides the preset Main Prompt, so ImageGen's extractor instruction lives in custom prompt `imagegen_override` (system, injection depth 0) which cards cannot override. Without it DeepSeek narrated the scene instead of returning tags.
 - Memory prompt says "integrate prior summary" → a salad summary left in the box poisons the next run. Clear the Current summary box before re-summarizing.
@@ -1048,7 +1049,7 @@ sd['character_prompts']['Your Oblivious Mother'] = (
 | Text/speech bubbles in output | Negative missing | Add `text, speech_bubble, dialogue, caption` to negative |
 | Object on wrong body part | SDXL placement limit | Use spatial negative steering or img2img inpaint |
 | Summary textarea stays empty after `/summarize` | STscript executor locks `is_send_press` → /summarize times out silent | Use `/dom action=click "#memory_force_summarize"` (LALib) — see gotcha 5.33 |
-| Summary returns RP prose / word-salad / blank | OpenRouter routed to a bad provider (DeepInfra, GMICloud) — `openrouter_quantizations` non-empty makes the provider pin useless | `openrouter_quantizations: []` + pin Alibaba/DeepSeek/StreamLake in live + every preset; clear the summary box before retry — gotcha 5.44 |
+| Summary returns RP prose / word-salad / blank | OpenRouter routed to a bad provider (DeepInfra, GMICloud) — `openrouter_quantizations` non-empty makes the provider pin useless | `openrouter_quantizations: []` + pin DeepSeek/StreamLake (NOT Alibaba — moderates NSFW output) in live + every preset; clear the summary box before retry — gotcha 5.44 |
 | Summary contaminated by persona/WI context | Default `prompt_builder` injects prompt manager content | Set `extension_settings.memory.prompt_builder: 1` (RAW_BLOCKING) |
 
 ---
