@@ -999,6 +999,9 @@ STRICT: Third-person past tense. NO dialogue. NO prose continuation. Maximum {{w
 | `SkipWIAN` | `True` | Belt-and-suspenders alongside RAW_BLOCKING |
 | `promptInterval` | `0` | Disable auto-trigger (would fire on active connection = often DeepSeek = bad output) |
 | `source` | `main` | Use active connection — `/profile` switch via QR controls which |
+| `promptWords` | `700` | Was 500 → 900 → 700 (2026-08-29). The summary no longer feeds lore-baking, so it is sized for its only remaining job: in-chat injection at depth 2 on over-long chats |
+
+**Prompt revision 2026-08-29 — repurposed for continuation, not retelling** (`extension_settings.memory.prompt`, live). `/st-arc-save` now reads the chat `.jsonl` directly, so the Summarize extension is out of the lore flow and is only a safety net when a single chat outgrows context. The prompt is rewritten for that job: **recency gradient** (§1 *Now* = exact state at the last message, present tense · §2 *Recent beats* = last ~10 messages one line each · §3 *Earlier* = 1–2 sentences per scene), then continuity tables (§4 *Cast* incl. every NPC with location · §5 *Knowledge* = who knows / is unaware of what · §6 *Standing facts* = rules, promises, transformations, running excuses). Rules: facts from this chat only (sheets + lore are already in context — RAW_BLOCKING hides WI from the summarizer, so it must not re-derive origins), "not shown" for anything unclear, ≤3 verbatim lines that act as standing rules, merge a prior summary by compressing its old material further while keeping Cast/Knowledge/Standing. Do NOT press Summarize now on a chat you will keep playing unless it is actually long — the injected block costs ~1k tok/turn and can drift from the baked Established State.
 
 ---
 

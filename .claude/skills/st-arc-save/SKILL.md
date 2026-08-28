@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, AskUserQuestion, mcp__st__st_get_settings, mcp__st__s
 
 # ST Arc Save — Persistent Narrative Memory
 
-Hai's flow: RP an arc with {{char}} → arc concludes → use Memory extension to summarize → run this skill to bake the summary into searchable lore. Future chats with the same persona/char auto-load this context.
+Hai's flow: RP an arc with {{char}} → arc concludes → run this skill. It reads the chat log itself and bakes the arc into searchable lore. Future chats with the same persona/char auto-load this context. (The Summarize extension is NOT part of this flow — it stays a safety net for over-long chats; a pasted summary is accepted only as an optional outline.)
 
 ## Architecture
 
@@ -32,6 +32,8 @@ Universal {{char}} mechanics (parasite biology, etc.) belong in char's primary l
 /st-arc-save "Arc 1" --char-bound           # save to char primary book instead
 /st-arc-save --char Parasite                # explicit char (skip auto-detect)
 /st-arc-save "Arc 2" --no-brain             # skip brain_save followup
+/st-arc-save "Chap 3" --chat "Parasite - 2026-08-30@…jsonl"   # explicit chat file (default: newest on disk)
+/st-arc-save "Chap 3" <pasted summary>      # optional outline — the log is still the source
 ```
 
 ## Constants
@@ -52,6 +54,8 @@ Extract from `$ARGUMENTS`:
 - `char_bound` = `--char-bound` flag present
 - `explicit_char` = value of `--char <CharName>` if given
 - `no_brain` = `--no-brain` flag present
+- `chat_file` = value of `--chat <file>` if given (basename, under `chats/<Char>/`)
+- `outline` = any multi-line text after the title (a pasted summary) — optional
 
 Detect active persona:
 
@@ -83,21 +87,50 @@ If `arc_title` not provided:
 
 ---
 
-## Phase 1: Get Summary
+## Phase 1: Read the Chat Log
 
-Most reliable path: ask user to paste from ST's Memory panel (Current summary box).
+The chat `.jsonl` is the source of truth. The Summarize extension compresses 10k+ words into a few
+hundred and drops exactly the beats lore needs (a new ability, a named line of dialogue, the NPC
+who walks in on the last message) — Naoko Arc 2 (2026-08-29) lost the prehensile tongue, a whole
+second encounter, and the woman at the door that way. Reading the log costs ~1.3 tok/word; a full
+chapter is ~15–20k tokens. Read it all.
 
-Use AskUserQuestion with body:
+```python
+import json, glob, os
+ST_DATA = "/home/haint/Projects/home-server/sillytavern/data/default-user"
+SCRATCH = "<scratchpad dir from the system prompt>"
+
+if chat_file:                       # --chat given
+    paths = glob.glob(f"{ST_DATA}/chats/*/{chat_file}")
+else:                               # newest chat on disk = the arc Hải just finished
+    paths = sorted(glob.glob(f"{ST_DATA}/chats/*/*.jsonl"), key=os.path.getmtime)[-1:]
+path = paths[0]
+char = os.path.basename(os.path.dirname(path))
+
+rows = [json.loads(l) for l in open(path)]        # rows[0] = chat metadata, rest = messages
+msgs = rows[1:]
+with open(f"{SCRATCH}/chat.txt", "w") as out:
+    for i, m in enumerate(msgs):
+        who = "USER" if m.get("is_user") else "CHAR"
+        out.write(f"\n\n##### [{i}] {who} {m.get('name')} ({m.get('send_date','')})\n{m.get('mes','')}")
+
+words = sum(len(m.get("mes", "").split()) for m in msgs)
+print(f"chat: {char} / {os.path.basename(path)} — {len(msgs)} msgs, {words} words, "
+      f"{msgs[0].get('send_date','?')[:10]} → {msgs[-1].get('send_date','?')[:10]}")
 ```
-Paste the 5-section summary from ST's Memory panel:
-(Setting / Plot Events / Character State / World Facts / Open Threads)
 
-Skill will parse into Established State (cumulative facts) + Arc N (event log).
-```
+Print that line for Hải, then `Read` `chat.txt` in full (offset/limit in chunks if it exceeds one
+read). Cross-check the file against the arc: the first message should follow on from the previous
+arc's Established State, and the date range should match the sessions Hải just played. When the
+newest file is not the arc (he already opened the next chapter, or the char is wrong), take the
+`--chat` file or ask which one.
 
-Validation: if pasted text < 200 chars → warn "summary looks too short, did Memory extension generate properly? Continue anyway?"
+**Optional outline.** If `outline` was pasted, use it only to sanity-check coverage (every event it
+lists should appear in the log) and as a rough section skeleton. Every fact in the entries comes
+from the log; when the outline and the log disagree, the log wins.
 
-Optional advanced path (skip if too brittle): try to read summary from chat file metadata. ST stores Memory output in `chats/{CharName}/{chat}.jsonl` either as a system message or in chat_metadata. Pattern varies by ST version. For v1 of this skill, just rely on user paste.
+Note the narrator's slips while reading (a wrong name, a "young man" who was forty) — write the
+lore from the events, and mention the slip in the report so Hải knows it was seen, not copied.
 
 ---
 
@@ -153,13 +186,13 @@ if established_old:
 
 ---
 
-## Phase 3: LLM Parse Summary → 2 Entries
+## Phase 3: Log → 2 Entries
 
-Given the pasted summary text, produce 2 distinct outputs.
+From the chat log (plus `established_old`), produce 2 distinct outputs.
 
 ### Established State (cumulative facts, ~150 words)
 
-**Inputs: the pasted summary AND `established_old` from Phase 2.** This entry is cumulative across every arc — compose the NEW version by merging the old content with what this arc changed. Writing it from the new summary alone silently erases every fact arcs 1..N-1 established, which is exactly the loss this entry exists to prevent. When `established_old` is non-empty, start from it: keep every fact the new arc didn't change, update the ones it did, append the new ones.
+**Inputs: the chat log AND `established_old` from Phase 2.** This entry is cumulative across every arc — compose the NEW version by merging the old content with what this arc changed. Writing it from this arc alone silently erases every fact arcs 1..N-1 established, which is exactly the loss this entry exists to prevent. When `established_old` is non-empty, start from it: keep every fact the new arc didn't change, update the ones it did, append the new ones.
 
 Cover only state that *changes across arcs* — bond/relationship state, location, persistent conditions (pregnancies, transformations, oaths), compressed cumulative effects. Identity and appearance already live in `persona_descriptions[<avatar>].description`, which injects on every turn regardless; restating them here pays for the same tokens twice (same one-rule-one-home discipline as `/st-setup`'s lorebook phase).
 
@@ -278,6 +311,14 @@ entries[str(arc_uid)] = make_entry(
 )
 print(f"Appended {arc_label} entry [uid={arc_uid}, {len(trigger_keywords)} keys]")
 
+# Close the steering entry /st-arc-plan wrote for this arc — the arc it steered is now baked.
+# Disable rather than delete: it stays readable as the record of what was planned vs. played.
+for uid, e in entries.items():
+    c = e.get('comment', '')
+    if 'Direction' in c and target_name in c and not e.get('disable'):
+        e['disable'] = True
+        print(f"Disabled steering entry [uid={uid}] {c}")
+
 # st_save_worldinfo REPLACES the whole file — guard the write:
 # 1. backup the current file (cheap, makes every mistake reversible)
 # 2. entry count must never DECREASE — this skill only updates or appends,
@@ -322,6 +363,7 @@ if not char_bound and not target_exists:
 ✓ Established State entry: {UPDATED | CREATED} (constant=true, ~{N} words)
 ✓ Arc {N} entry: APPENDED (selective=true, {M} keys, ~{P} words)
 ✓ Lorebook: worlds/{target_name}.json ({total} entries total)
+[✓ Steering entry from /st-arc-plan disabled: {comment}]
 [✓ Persona binding: {persona} → {target_name}]
 
 Established State — old vs new (print both in full so the user can catch a lost fact NOW, while the .bak is one `cp` away):
@@ -372,8 +414,9 @@ This makes arc summaries searchable via `brain_recall` from any future Claude se
 | Persona-bound lorebook doesn't exist | Create new lorebook + bind in settings.json |
 | Established State exists but for different name | Match requires the FULL `target_name` in the comment ("Naoko" must not update "Naoko the Hive Queen"); on mismatch, create new (don't conflate) |
 | Arc number collision (Arc 3 exists, user titles new "Arc 3") | Numbering is `max(existing Arc N) + 1` parsed from comments — survives deleted or hand-numbered arcs; warn user when their title implies a different number |
-| Summary is empty/too short | AskUserQuestion: continue anyway / abort / paste again |
-| User pastes summary in non-5-section format | Best-effort parse; warn that structure may be incomplete |
+| Newest chat file is not the arc (next chapter already started, wrong char) | Use `--chat <file>`, or list `chats/*/*.jsonl` by mtime and ask which |
+| Chat is very long (100+ msgs) | Read in chunks; for the Arc entry keep every encounter but compress early scenes harder than late ones |
+| Pasted outline contradicts the log | Log wins; note the discrepancy in the report |
 
 ---
 
@@ -381,12 +424,13 @@ This makes arc summaries searchable via `brain_recall` from any future Claude se
 
 - `/st-setup <CharName>` → run BEFORE first arc to establish char's primary lorebook + char_prompts
 - `/st-persona <CharName>` → convert char to persona before saving arcs to persona-bound book
+- `/st-arc-plan "<premise>"` → run AFTER this skill to open the next arc: writes a temporary Direction entry + opener; this skill disables that entry when the arc is saved
 - Recommended flow:
   ```
   /st-setup <CharName>                                  # baseline (+ --lore if the char needs a primary book)
   /st-persona <SourceChar>                              # convert a card into the user persona
-  [RP arc 1, ~50-100 messages]
-  Memory panel → Summarize now → copy 5-section summary
-  /st-arc-save "<Arc Title>"                            # bake into the persona's book
+  [RP arc 1, ~20-100 messages]
+  /st-arc-save "<Arc Title>"                            # reads the chat log, bakes into the persona's book
+  /st-arc-plan "<premise for the next arc>"             # steering entry + opener → paste opener into the new chat
   [start new chat → Established State auto-loads]
   ```

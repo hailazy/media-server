@@ -21,7 +21,7 @@ mcp = FastMCP(
         "SillyTavern data API — manage characters, chats, settings, and lorebooks "
         "without restarting the ST container. ST hot-reloads on st_save_settings "
         "and st_save_worldinfo. Pair with /st-setup, /st-persona, /st-audit, "
-        "/st-arc-save, /st-gen-image-prompt skills. Use path-based getters/setters "
+        "/st-arc-save, /st-arc-plan, /st-gen-image-prompt skills. Use path-based getters/setters "
         "to avoid 80KB+ full-tree dumps."
     ),
 )
