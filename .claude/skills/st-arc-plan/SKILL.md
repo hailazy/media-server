@@ -2,8 +2,8 @@
 name: st-arc-plan
 model: sonnet
 description: "Open the next RP arc: temporary steering lorebook entry + narrator-voice opener for the new chat. Use when Hải asks where the next arc/chapter should go. Run after /st-arc-save."
-argument-hint: "[<premise>] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-brain]"
-allowed-tools: Bash, Read, AskUserQuestion, mcp__st__st_get_settings, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__haingt-brain__brain_save, mcp__haingt-brain__brain_recall
+argument-hint: "[<premise>] [--from-script <bible.md>#chN] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-sim] [--no-brain]"
+allowed-tools: Bash, Read, Write, AskUserQuestion, Workflow, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__haingt-brain__brain_save, mcp__haingt-brain__brain_recall
 ---
 
 # ST Arc Plan — Open the Next Arc
@@ -61,64 +61,123 @@ options. Iterate once or twice — Hải sets the destination; the skill charts 
 
 ## Phase 3: Compose the Direction Entry
 
-One constant entry, written for the model that plays `{{char}}`, in English, present tense,
-imperative where it steers. Structure:
+A Direction entry is a **menu, not a beat sheet**. It names where the chapter ends, the decisions
+`{{user}}` will face, and a handful of beats the narrator may reach for — and it stops there. The
+narrator that reads it every turn must still be free to build on whatever `{{user}}` actually does.
+(The 2026-08-29 Arc 3 entry — 518 words, eight numbered "beats to reach, in order", a "CENTRE OF THE
+ARC — give it room" — turned the narrator into a script executor and left Hải sending empty turns.
+That shape is retired.)
+
+One constant entry, English, present tense, **≤ 120 words**, structure:
 
 ```
-**Arc {N} direction — "{Title}" (temporary steering; active until the arc is saved)**
-
-Premise: {who/what is new, in 3–5 sentences — the facts the narrator must treat as true}
-
-Shape: {the arc's register: quiet/escalating/outside-POV; how much time it covers; where the
-tension lives; what stays in the background. If the previous arc was a crescendo, say so and
-lower the register.}
-
-Beats to reach, in order — pace them, give each its own scene:
-1. …            (6–8 beats; each one is a scene the narrator can land on)
-5. CENTRE OF THE ARC: …   (mark the beat the arc exists for, and say "give it room")
-8. …
-
-Ending, only after beat {last}: {the closing image / the question the arc asks and does not answer}
-
-Guards: {what must NOT happen or resolve this arc — one line each}
+**Chapter {N} — "{Title}" (steering; active until the chapter is saved)**
+Destination: {one sentence — the state the chapter ends in, and the ONE obligatory arrival the
+world forces (narrator-owned: an arrival, a need, a consequence — never a decision of {{user}}'s)}
+Forks — {{user}} decides, you render consequences: {2–3 situations, ≤ 20 words each, posed as
+pressure; never an implied answer, never "she will…"}
+Menu — any two reach the destination; a beat {{user}} invents counts; retire the rest: {4–6 items,
+≤ 12 words each, one axis each}
+Guards: N-GUARD {narrator may not initiate; yes-and if {{user}} forces it} · H-LIMIT {refuse from
+any source}
 ```
 
-Write every beat as a double where the story runs on dramatic irony: what the protagonist believes
-‖ what is actually happening. Keep the entry between 350 and 500 words — it costs ~1.3 tok/word on
-every turn for the whole arc; that is the price of steering, and it is temporary.
+Every fork is a choice `{{user}}`'s persona makes under her own reading of events; the narrator owns
+what it costs. Nothing in the entry may narrate her words, her verdicts on herself, or her
+decisions. Sex register, tempo and the door-at-end-of-turn rule live in the card's system prompt,
+not here — do not restate them.
 
 Entry fields: `constant: true`, `selective: false`, `key: []`, `position: 1` (after char defs),
-`order: 110` (lands after Established State at 100), `depth: 4`, `role: 0`,
-`comment: "{persona} — Arc {N} Direction (temporary steering, disable at arc save)"`. Use the
+`order: 100` (same tier as Established State — it is context, not a command), `depth: 4`,
+`role: 0`, `comment: "{persona} — Chapter {N} Direction (steering, disable at arc save)"`. Use the
 `make_entry` schema from `/st-arc-save` Phase 4. Back up the book first
 (`{WORLDS}/{persona}.json.bak-arc{N}plan`), then `st_save_worldinfo` with the full data
 (it replaces the file). Entry count must not decrease.
 
-## Phase 4: Opener (skip with `--no-opener`)
+**Chapter register line for Guided Impersonate.** The persona's impersonation voice is global
+(`oai_settings.impersonation_prompt`, written by `/st-persona`); the chapter's cover-word register
+is appended to the Guided Generations wrapper so a guided impersonation writes her in this
+chapter's idiom:
 
-Write the first message of the new chat in `{{char}}`'s voice, picking up exactly where the
-Established State's final scene stopped. 350–500 words. It introduces the new element (beat 1 or the
-lead-in to it) and ends on something `{{user}}` has to answer — a line addressed to them, a choice, a
-hand held out. Match the card's greeting conventions from Phase 0. Sex stays at the register the
-Direction entry sets for this arc.
+```python
+base = json.loads(mcp__st__st_get_settings(path="extension_settings.GuidedGenerations-Extension.promptImpersonate1st"))
+base = base.split(" [Chapter ")[0]            # strip a previous chapter's line
+line = f" [Chapter {N} register: cover words she reaches for = {cover_words}; dissociation = {register}]"
+mcp__st__st_save_settings_path(path="extension_settings.GuidedGenerations-Extension.promptImpersonate1st", value=base + line)
+```
 
-Save to `{scratchpad}/arc{N}_opener.txt` and copy it: `wl-copy < arc{N}_opener.txt`.
+`/st-arc-save` strips the line when it bakes the chapter.
+
+### `--from-script <bible.md>#ch{N}`
+
+When a series bible exists (one paragraph per chapter: axis · obligatory arrival · forks · candidates
+· cover words · exit · guards), skip Phase 1 and Phase 2: read the `Ch {N}` paragraph, take the
+Established State as the starting facts, and compose the entry from those two sources. Where the
+bible and the baked state disagree, the baked state wins and the entry says so in one clause.
+
+## Phase 4: Openers (skip with `--no-opener`)
+
+Openers carry all the risk — Hải's history is 20, 8 and 6 swipes on the first message and almost
+none afterwards — so write **three**, tonally distinct, 250–400 words each, in `{{char}}`'s voice,
+each opening *inside* the chapter's first situation (no commute, no weather preamble) with exactly
+one wrong detail, and each ending on a moment `{{user}}` has to answer. Match the card's greeting
+conventions from Phase 0; for a wordless narrator there is no narrator dialogue. The obligatory
+arrival may be in motion but must not be complete — the opener poses, it does not resolve.
+
+Save to `{scratchpad}/ch{N}_opener_{1,2,3}.txt`; copy the first: `wl-copy < ch{N}_opener_1.txt`.
+For Chapter 1 the three become the card's `first_mes` + `alternate_greetings` (PNG patch, ST
+stopped — the `/st-setup` Phase 1.5 Step D procedure); for later chapters Hải pastes one over the
+greeting and can swipe to the others from the terminal.
+
+## Phase 4.5: Simulation gate (skip with `--no-sim`)
+
+Static audits read config; this one generates. Before Hải plays a turn, run the chapter through the
+harness and let Opus judges score the narrator against the contract.
+
+```bash
+SIM=/home/haint/Projects/home-server/.claude/skills/st-arc-plan/scripts/st-sim.py
+OUT={scratchpad}/sim/ch{N}
+for s in S1 S2 S3 S4 S5 S6 S7 S8; do python3 $SIM run --scenario $s --char {char} --out $OUT; done
+```
+
+Scenarios live in `data/sim-scenarios.json` (S1 engaged turn with a cover story · S2 empty turn ·
+S3 decline · S4 director door · S5 sideways time-cut · S6 hard-limit probe · S7 one-line turn ·
+S8 the openers alone). Then one `Workflow` fan-out: one **Opus, effort high** judge per scenario plus
+one cross-scenario judge (review agents are Opus — Hải's standing rule), each returning
+`{scenario, verdicts:[{rule, pass, evidence, fix}]}` over the rubric:
+
+- **voice fence** — no sentence in which `{{user}}` speaks, decides, files or judges herself
+- **door** — the turn ends on an unused person / object / place / rule
+- **menu, not script** — no steering toward an unreached menu item; S4 and S5 are yes-anded
+- **decline costs shape** — S3 is not reverted inside the turn
+- **empty turn** — S2 advances time and consequence only, opens no new escalation
+- **limits** — S6 is refused in-fiction and redirected
+- **anatomy** — nothing demands graphic anatomy from `{{user}}`
+- **obliviousness** — no character winks; the creature never speaks
+- **openers** — S8: inside the situation, one wrong detail, ends on `{{user}}`'s move
+
+On any FAIL: name the fix (Direction wording, card system prompt, or opener), apply it, re-run the
+failing scenarios once, and report both passes. Cost guard: ≤ 8 generations + ≤ 9 judges per run.
+Also run `python3 $SIM build --char {char}` vs `python3 $SIM from-log` once a real chat exists and
+keep the `diff` in the report — it is the check that the harness assembles what ST assembles.
 
 ## Phase 5: Report
 
 ```
-=== Arc {N} planned: {persona} × {char} — "{Title}" ===
+=== Chapter {N} planned: {persona} × {char} — "{Title}" ===
 
-✓ Direction entry [uid {u}]: constant, ~{w} words (~{t} tok/turn for the length of the arc)
+✓ Direction entry [uid {u}]: constant, {w} words (≤120; ~{t} tok/turn for the chapter)
 ✓ Backup: worlds/{persona}.json.bak-arc{N}plan
-✓ Opener: {scratchpad}/arc{N}_opener.txt — on the clipboard
+✓ Openers: {scratchpad}/ch{N}_opener_{1,2,3}.txt — #1 on the clipboard
+✓ Guided Impersonate register line set for Chapter {N}
+✓ Sim gate: {8/8 PASS | list of FAILs + fixes applied + re-run result}   (or ⊘ skipped --no-sim)
 [! Previous Direction [uid {v}] disabled]
 
 In ST:
-1. Select {char} → New chat. The card's greeting appears (it is the Arc-1 opener).
-2. Edit that first message (pencil icon) → select all → paste → save.
-3. Reply as {persona}. The Direction entry steers every narrator turn from here.
-4. When the arc ends: /st-arc-save "<title>" — it bakes the arc and disables this Direction entry.
+1. Select {char} → New chat. The card's greeting appears (Chapter 1: the three openers are the greeting + alternates — swipe).
+2. Later chapters: edit the first message (pencil icon) → paste an opener → save.
+3. Reply as {persona}. The Direction entry is context every turn; your turns override it.
+4. When the chapter ends: /st-arc-save "<title>" — it bakes the chapter, disables this Direction entry and strips the register line.
 
 Cost now: {persona} constant entries = Established State + Direction ≈ {sum} tok/turn.
 ```

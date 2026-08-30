@@ -260,6 +260,60 @@ def audit_lorebooks(s: dict, only: str | None) -> None:
                     "move to depth 4 unless it genuinely must outrank the card")
 
 
+# ───────────────────── layer 4: voice contract + steering entries ─────────────────────
+FENCE = re.compile(r"never \{\{user\}\}'s speech|never \{\{user\}\}'s speech or decisions", re.I)
+DOOR = re.compile(r"end on a door", re.I)
+
+
+def audit_voice(s: dict) -> None:
+    """The impersonation prompt and the Guided Generations wrappers are GLOBAL but
+    must describe the ACTIVE persona; a Direction entry must be a menu (≤120 words),
+    not a beat sheet."""
+    pu = s.get("power_user", {})
+    avatar = s.get("user_avatar", "")
+    name = (pu.get("personas") or {}).get(avatar, "")
+    imp = (s.get("oai_settings") or {}).get("impersonation_prompt", "") or ""
+    if name and name.lower() not in imp.lower():
+        add(FLAG, "voice", "impersonation_prompt",
+            "does not name the active persona %r — Guided Impersonate writes a generic {{user}}" % name,
+            "run /st-persona %s --voice" % name)
+    desc = (pu.get("persona_descriptions") or {}).get(avatar) or {}
+    if (pu.get("persona_description_lorebook") or "") != (desc.get("lorebook") or ""):
+        add(FLAG, "voice", "persona_description_lorebook",
+            "global persona lorebook %r != active persona's %r — ST injects the GLOBAL one (world-info.js getPersonaLorebook)"
+            % (pu.get("persona_description_lorebook"), desc.get("lorebook")),
+            "st_save_settings_path('power_user.persona_description_lorebook', '%s')" % (desc.get("lorebook") or ""))
+    gg = (s.get("extension_settings") or {}).get("GuidedGenerations-Extension") or {}
+    for key in ("promptGuidedResponse", "promptGuidedContinue"):
+        txt = gg.get(key, "") or ""
+        if not (FENCE.search(txt) and DOOR.search(txt)):
+            add(WARN, "voice", key,
+                "guide wrapper lacks the voice fence / door rule — a guide can make the narrator speak for {{user}}",
+                "run /st-persona %s --voice" % (name or "<Name>"))
+    if name and name.lower() not in (gg.get("promptImpersonate1st", "") or "").lower():
+        add(WARN, "voice", "promptImpersonate1st", "wrapper does not name the active persona",
+            "run /st-persona %s --voice" % name)
+
+    for path in sorted((ST_DATA / "worlds").glob("*.json")):
+        try:
+            entries = json.loads(path.read_text(encoding="utf-8")).get("entries", {})
+        except Exception:
+            continue
+        for e in entries.values():
+            if "Direction" not in (e.get("comment") or "") or e.get("disable"):
+                continue
+            txt = e.get("content") or ""
+            words = len(re.findall(r"[^\W_]+(?:'[^\W_]+)?", txt))  # real words, not separators/markdown
+            if words > 120 or re.search(r"beats to reach|centre of the arc|give it room", txt, re.I):
+                add(FLAG, "steering", f"{path.stem}:{e.get('comment','?')[:40]}",
+                    "Direction entry is a beat sheet (%d words) — the narrator will run it as a script" % words,
+                    "rewrite as Destination / Forks / Menu / Guards, ≤120 words (/st-arc-plan Phase 3)")
+            if (e.get("order") or 100) > 100:
+                add(WARN, "steering", f"{path.stem}:{e.get('comment','?')[:40]}",
+                    "Direction entry order %s outranks Established State" % e.get("order"),
+                    "order 100 — it is context, not a command")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--char", help="scope to one character name (no .png)")
@@ -274,6 +328,7 @@ def main() -> int:
     audit_sd_prompts(s, a.char)
     audit_precedence(s, a.char)
     audit_lorebooks(s, a.char)
+    audit_voice(s)
 
     if a.as_json:
         print(json.dumps(findings, ensure_ascii=False, indent=2))
@@ -284,7 +339,7 @@ def main() -> int:
     if not findings:
         print("No config-layer problems found.")
         return 0
-    for area in ["sd-prompts", "sd-style", "precedence", "card", "lorebook"]:
+    for area in ["sd-prompts", "sd-style", "precedence", "card", "lorebook", "voice", "steering"]:
         rows = [f for f in findings if f["area"] == area]
         if not rows:
             continue

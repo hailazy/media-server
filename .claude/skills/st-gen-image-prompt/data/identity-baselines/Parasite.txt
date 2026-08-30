@@ -1,1 +1,5 @@
-no humans, 1other, monster, creature, alien, parasite, leech, slug, worm, see-through body, translucent, transparent, purple_skin, blue_theme, purple_theme, no eyes, blind, antennae, glowing, mucus, dripping, slimy,
+# Parasite — per-shot baseline (narrator card; character_prompts deliberately EMPTY so nothing is painted onto the host)
+# creature-only render (grubs): no_humans, insect_larva, maggot, grubs, multiple, cream, pale_yellow, plump, glossy, segmented, wet, slimy, wriggling, blue-green_flecks, faint_glow, bioluminescence, drain, concrete, biofilm, dim_lighting
+# imago (rare, tiny): insect, midge, graphite, dark_grey, wet, drain_grate, macro
+# creature-only negative (paste per shot only): 1girl, humanoid, face, eyes, cute, chibi, cartoon, green_drift, dry, matte, blood, gore
+# host-in-frame shots: use the Mizuho persona baseline; the creature stays internal/unseen except grubs at exit

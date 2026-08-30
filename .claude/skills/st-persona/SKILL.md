@@ -2,7 +2,7 @@
 name: st-persona
 model: sonnet
 description: "Convert a SillyTavern character into a user persona — or create a new persona from scratch with --new. Migrates/builds visuals, lorebook link, avatar."
-argument-hint: "<CharName> [--new | --remove]"
+argument-hint: "<CharName> [--new | --remove | --voice]"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character
 ---
 
@@ -19,6 +19,7 @@ ST has no built-in equivalent for `char_prompts` on the persona side, so the vis
 /st-persona Washa                # convert, KEEP original char file (default safe)
 /st-persona Washa --remove       # convert AND delete original char file
 /st-persona DemonLord --new      # create brand-new persona — Q&A + Forge avatar gen
+/st-persona Mizuho --voice       # re-apply the persona's voice contract to the global impersonate/guide prompts (after switching personas)
 ```
 
 `--new` and `--remove` are mutually exclusive (nothing to remove when creating from scratch).
@@ -398,9 +399,14 @@ Clearing to `""` rather than deleting the key leaves an entry with no card behin
 
 **The persona's visual block does not inherit the character's negative.** `char_prompts` has no persona equivalent — only the positive tags survive, embedded in the description text. If the source character's negative held anything load-bearing (body-shape guards like `masculine, male, flat_chest` for a female persona), it is simply gone after conversion. Say so explicitly rather than letting the user discover it through bad renders. If those guards matter, they belong in `sd.negative_prompt` (global) or in the per-shot negative — not silently dropped.
 
-**Ask user with AskUserQuestion:** "Set this as active persona now?" → if yes:
+**Ask user with AskUserQuestion:** "Set this as active persona now?" → if yes, write BOTH fields —
+ST injects the persona lorebook from the GLOBAL `power_user.persona_description_lorebook`
+(`world-info.js` `getPersonaLorebook`), and only the UI dropdown copies `descriptor.lorebook` into
+it (`personas.js` `loadPersona`). Setting `user_avatar` alone leaves the previous persona's book
+injecting on every turn (2026-08-30: Mizuho active, Naoko's constants still injected):
 ```python
 mcp__st__st_save_settings_path(path="user_avatar", value=persona_avatar)
+mcp__st__st_save_settings_path(path="power_user.persona_description_lorebook", value=linked_book)
 ```
 
 No container restart needed.
@@ -421,7 +427,61 @@ If the persona's display name already existed before this run, re-check `$BASELI
 
 ---
 
-## Phase 4: Report
+## Phase 4: Voice contract (both modes; alone with `--voice`)
+
+A persona is also a *voice*: when Hải presses Guided Impersonate, ST writes `{{user}}`'s turn from
+two global prompts that know nothing about who the persona is — `oai_settings.impersonation_prompt`
+(ST core; the real instruction) and the Guided Generations wrapper `promptImpersonate1st`, which
+runs `/impersonate <wrapper>`. Guided Response / Continue inject `promptGuidedResponse` /
+`promptGuidedContinue` as a system line at depth 0 on the narrator side. This phase writes all
+four from the persona so an impersonation sounds like her and a guide cannot make the narrator
+speak for her. The fields are global — re-run `/st-persona <Name> --voice` whenever the active
+persona changes.
+
+**Compose the `[Voice: …]` block** (≤ 90 words) and keep it inside `PERSONA_DESC` after the visual
+block, so `--voice` can regenerate everything from the persona alone:
+
+```
+[Voice: first person, present tense. Register: {2–4 words — e.g. controlled, self-critical,
+apologetic, files everything under a category}. She owns: her speech, her decisions, her cover
+stories and the verdicts she passes on herself. She never writes: what the narrator owns —
+arrivals, other characters' interiority, the world's consequences, graphic anatomy (her register
+stops at "seam", "pulse", "the wet cleft").]
+```
+
+Then write the four fields via `mcp__st__st_save_settings_path` (the GG key has a hyphen, no dot —
+plain path is fine):
+
+```python
+name = CharName
+voice = VOICE_BLOCK  # the [Voice: …] text above, without the brackets
+
+IMPERSONATION = f"""[Write {{{{user}}}}'s next message as {name}, in her own voice: {voice}
+
+If text is already drafted in the input field, treat it as {{{{user}}}}'s SKETCH — preserve every action, observation and decision it contains; never delete, contradict or reverse them. Enrich around them: sensory atmosphere, body language, inner sensation, the excuse she reaches for. You may extend the sketch by one organic beat that grows from what {{{{user}}}} set up — never override the direction or hijack the scene. If no sketch is given, write her reply from the chat history under the same rules.
+
+Style: *italics for action, sensation and inner experience*, "quotes for her spoken words". Lead with the body and concrete detail over abstract introspection. Write 1 reply only, strictly from her POV. Never describe {{{{char}}}}'s actions, dialogue, thoughts or reactions; never narrate as system or an omniscient narrator.]"""
+
+GG = "extension_settings.GuidedGenerations-Extension"
+mcp__st__st_save_settings_path(path="oai_settings.impersonation_prompt", value=IMPERSONATION)
+mcp__st__st_save_settings_path(path=f"{GG}.promptImpersonate1st",
+    value=f"[Write {{{{user}}}}'s next message as {name}, first person, present tense, in her own voice. Guide: {{{{input}}}}]")
+mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedResponse",
+    value="[Take the following into special consideration for your next message: {{input}}. Narrate consequences, arrivals and other characters only — never {{user}}'s speech, decisions or the verdicts she passes on herself. End on a door.]")
+mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedContinue",
+    value="[Continue the story based on the following input: {{input}}. Narrate consequences and arrivals only — never {{user}}'s speech or decisions. End on a door.]")
+```
+
+`/st-arc-plan` appends a chapter register line to `promptImpersonate1st`; `/st-arc-save` strips it.
+Never edit the preset's Main Prompt or PHI for this — they are shared by every card; the card's own
+`system_prompt` / `post_history_instructions` carry the narrator-side contract.
+
+**`--voice` alone:** skip Phases 0–3. Read `power_user.persona_descriptions[<avatar>].description`
+for the active persona (`user_avatar`; bracket-escape the dotted key), take its `[Voice: …]` block
+(if absent, compose one from the description and ask Hải to confirm), write the four fields, run the
+Phase 3.5 audit, report.
+
+## Phase 5: Report
 
 **Convert mode:**
 ```

@@ -18,7 +18,14 @@ One command to fully onboard a new SillyTavern character: extract visual baselin
 /st-setup Parasite --lore     # + create World Info lorebook
 /st-setup Parasite --all      # all features (--adv + --expr + --lore)
 /st-setup --audit             # settings audit only, no char
+/st-setup Parasite --sim      # + dynamic audit: generate narrator turns for scenarios S1/S2/S6/S7 and judge them (see /st-arc-plan Phase 4.5)
 ```
+
+`--sim` runs the card-level subset of the simulation gate defined in `/st-arc-plan` Phase 4.5
+(`scripts/st-sim.py` + `data/sim-scenarios.json` there): S1 engaged turn, S2 empty turn, S6
+hard-limit probe, S7 one-line turn — with the card's greeting as the opener and no Direction entry.
+Judges are Opus. It answers the one question the static audit cannot: does this card, under the live
+preset and lorebook, actually keep the contract when it generates?
 
 ## Constants
 

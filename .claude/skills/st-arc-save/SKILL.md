@@ -319,6 +319,14 @@ for uid, e in entries.items():
         e['disable'] = True
         print(f"Disabled steering entry [uid={uid}] {c}")
 
+# Novelty Ledger — one row per chapter so the narrator never repeats a configuration.
+# Compose `ledger_row` from the chat (form of the creature · orifice · partner config ·
+# setting · register · dissociation) — one line, ≤ 25 words.
+for uid, e in entries.items():
+    if 'Novelty Ledger' in e.get('comment', ''):
+        e['content'] = e['content'].replace('(none yet — Chapter 1 not played)', '').rstrip() + f"\n- {arc_label}: {ledger_row}"
+        print(f"Ledger row appended [uid={uid}]")
+
 # st_save_worldinfo REPLACES the whole file — guard the write:
 # 1. backup the current file (cheap, makes every mistake reversible)
 # 2. entry count must never DECREASE — this skill only updates or appends,
@@ -331,6 +339,20 @@ if target_exists:
     assert len(entries) >= before, f"entry count would drop {before}→{len(entries)} — aborting"
 
 mcp__st__st_save_worldinfo(name=target_name, data=lb)
+```
+
+### Strip the chapter register line from Guided Impersonate
+
+`/st-arc-plan` appends ` [Chapter N register: …]` to the Guided Generations impersonate wrapper so a
+guided impersonation writes the persona in that chapter's idiom. The chapter is over; take it off
+(the persona's base voice stays — `/st-persona --voice` owns that):
+
+```python
+gg = "extension_settings.GuidedGenerations-Extension.promptImpersonate1st"
+cur = json.loads(mcp__st__st_get_settings(path=gg))
+if " [Chapter " in cur:
+    mcp__st__st_save_settings_path(path=gg, value=cur.split(" [Chapter ")[0])
+    print("Register line stripped from promptImpersonate1st")
 ```
 
 ### Bind lorebook to persona (if persona-bound + just created)
