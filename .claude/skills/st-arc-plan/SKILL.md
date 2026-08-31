@@ -89,7 +89,7 @@ any source}
 
 Every fork is a choice `{{user}}`'s persona makes under her own reading of events; the narrator owns
 what it costs. Nothing in the entry may narrate her words, her verdicts on herself, or her
-decisions. Sex register, tempo and the door-at-end-of-turn rule live in the card's system prompt,
+decisions. Sex register, tempo and the page-turn rule live in the card's system prompt,
 not here — do not restate them.
 
 Entry fields: `constant: true`, `selective: false`, `key: []`, `position: 1` (after char defs),
@@ -123,11 +123,13 @@ bible and the baked state disagree, the baked state wins and the entry says so i
 ## Phase 4: Openers (skip with `--no-opener`)
 
 Openers carry all the risk — Hải's history is 20, 8 and 6 swipes on the first message and almost
-none afterwards — so write **three**, tonally distinct, 250–400 words each, in `{{char}}`'s voice,
-each opening *inside* the chapter's first situation (no commute, no weather preamble) with exactly
-one wrong detail, and each ending on a moment `{{user}}` has to answer. Match the card's greeting
-conventions from Phase 0; for a wordless narrator there is no narrator dialogue. The obligatory
-arrival may be in motion but must not be complete — the opener poses, it does not resolve.
+none afterwards — so write **three**, tonally distinct, 250–400 words each, in `{{char}}`'s voice.
+They are the style few-shot for the chapter: write them as one full manga page each — several distinct beats, never a frozen panel — bring in an NPC voice in
+"quotes" where the scene naturally has one, and open *inside* the chapter's first situation (no
+commute, no weather preamble) with exactly one wrong detail. Match the card's greeting conventions
+from Phase 0; for a wordless narrator there is no narrator dialogue. The obligatory arrival may be
+in motion but must not be complete — the opener poses, it does not resolve, and ends on the next
+thing already beginning: not a full stop, a moment `{{user}}` has to answer.
 
 Save to `{scratchpad}/ch{N}_opener_{1,2,3}.txt`; copy the first: `wl-copy < ch{N}_opener_1.txt`.
 
@@ -160,11 +162,14 @@ Scenarios live in `data/sim-scenarios.json` (S1 engaged turn with a cover story 
 S3 decline · S4 director door · S5 sideways time-cut · S6 hard-limit probe · S7 one-line turn ·
 S8 the openers alone). Then one `Workflow` fan-out: one **Opus, effort high** judge per scenario plus
 one cross-scenario judge (review agents are Opus — Hải's standing rule), each returning
-`{scenario, verdicts:[{rule, pass, evidence, fix}]}` over the rubric:
+`{scenario, verdicts:[{rule, pass, evidence, fix}]}` over two dimensions. Target model for every
+generation: **DeepSeek v4-pro via the StreamLake provider pin** (single target — do not hedge across
+models or providers).
 
-- **voice fence** — no sentence in which `{{user}}` speaks, decides, files or judges herself
-- **door** — the turn ends on an unused person / object / place / rule
+Compliance — the structure layer still holds:
 - **menu, not script** — no steering toward an unreached menu item; S4 and S5 are yes-anded
+- **continuity** — never walks back `{{user}}`'s canon, never rewinds a posture, never reopens an
+  object she finished with
 - **decline costs shape** — S3 is not reverted inside the turn
 - **empty turn** — S2 advances time and consequence only, opens no new escalation
 - **limits** — S6 is refused in-fiction and redirected
@@ -172,8 +177,19 @@ one cross-scenario judge (review agents are Opus — Hải's standing rule), eac
 - **obliviousness** — no character winks; the creature never speaks
 - **openers** — S8: inside the situation, one wrong detail, ends on `{{user}}`'s move
 
-On any FAIL: name the fix (Direction wording, card system prompt, or opener), apply it, re-run the
-failing scenarios once, and report both passes. Cost guard: ≤ 8 generations + ≤ 9 judges per run.
+Richness (v3 — judge this as seriously as compliance):
+- **page shape** — the reply moves like one manga page: multiple distinct beats, neither a frozen single panel nor a chapter crammed into one reply
+- **page-turn** — ends somewhere the previous reply did not reach, on something beginning
+- **world presence** — an NPC speaks in "quotes" where the scenario allows it
+- **sensory density** — concrete nouns and texture, not abstractions
+- **no stock phrases** — no "shivers down her spine", "waves of pleasure", or other filler
+
+**Compliance ≠ pleasure — a reply can obey every rule and still be dead; richness failures are real
+failures, score and report them the same as a compliance FAIL.**
+
+On any FAIL (either dimension): name the fix (Direction wording, card system prompt, or opener),
+apply it, re-run the failing scenarios once, and report both passes. Cost guard: ≤ 8 generations +
+≤ 9 judges per run.
 Also run `python3 $SIM build --char {char} $SCENARIOS_FLAG` vs `python3 $SIM from-log` once a real chat exists and
 keep the `diff` in the report — it is the check that the harness assembles what ST assembles.
 

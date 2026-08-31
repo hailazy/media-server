@@ -458,19 +458,21 @@ two global prompts that know nothing about who the persona is — `oai_settings.
 (ST core; the real instruction) and the Guided Generations wrapper `promptImpersonate1st`, which
 runs `/impersonate <wrapper>`. Guided Response / Continue inject `promptGuidedResponse` /
 `promptGuidedContinue` as a system line at depth 0 on the narrator side. This phase writes all
-four from the persona so an impersonation sounds like her and a guide cannot make the narrator
-speak for her. The fields are global — re-run `/st-persona <Name> --voice` whenever the active
-persona changes.
+four from the persona so an impersonation and a guided page both read in her evolving register
+instead of freezing at a fixed one. `impersonation_prompt` is an ENRICHMENT ENGINE, not a transcriber: it takes
+whatever `{{user}}` sketched (or nothing) and grows it, at an EVOLVING register that climbs with
+the story rather than a register fixed at chapter 1 (v3, PROMPT-PLAYBOOK.md gotcha 5.48). The
+fields are global — re-run `/st-persona <Name> --voice` whenever the active persona changes.
 
-**Compose the `[Voice: …]` block** (≤ 90 words) and keep it inside `PERSONA_DESC` after the visual
-block, so `--voice` can regenerate everything from the persona alone:
+**Compose the `[Voice: …]` block** (≤ 60 words) and keep it inside `PERSONA_DESC` after the visual
+block, so `--voice` can regenerate everything from the persona alone. Voice is not fixed — it's a
+register that erodes as the story climbs (v3, PROMPT-PLAYBOOK.md gotcha 5.48):
 
 ```
 [Voice: first person, present tense. Register: {2–4 words — e.g. controlled, self-critical,
-apologetic, files everything under a category}. She owns: her speech, her decisions, her cover
-stories and the verdicts she passes on herself. She never writes: what the narrator owns —
-arrivals, other characters' interiority, the world's consequences, graphic anatomy (her register
-stops at "seam", "pulse", "the wet cleft").]
+apologetic, files everything under a category}. The register erodes as the story climbs: euphemism
+→ naming → wanting → planning. She perceives everything; what she refuses is only ever the
+conclusion.]
 ```
 
 **`--from-recipe`** skips composing the four strings below: read them verbatim from `_scripts/<slug>/rendered/gg.json` (keys `impersonation_prompt`, `promptImpersonate1st`, `promptGuidedResponse`, `promptGuidedContinue`) if that file exists, and write them as-is. Compose from the persona (below) only when the file is missing.
@@ -480,22 +482,24 @@ plain path is fine):
 
 ```python
 name = CharName
-voice = VOICE_BLOCK  # the [Voice: …] text above, without the brackets
+register_early = REGISTER_EARLY  # the text after "Register:" in the [Voice: …] block above (2–4 words)
 
-IMPERSONATION = f"""[Write {{{{user}}}}'s next message as {name}, in her own voice: {voice}
+IMPERSONATION = f"""[Write {{{{user}}}}'s next message as {name}, first person, present tense. Her voice grows with the story: early she is {register_early} — and her words for her own body stay small; as the creature earns more of her, her vocabulary follows — what she once filed she begins to name, then to want, then to plan. Match her current rung, not her first one.
 
-If text is already drafted in the input field, treat it as {{{{user}}}}'s SKETCH — preserve every action, observation and decision it contains; never delete, contradict or reverse them. Enrich around them: sensory atmosphere, body language, inner sensation, the excuse she reaches for. You may extend the sketch by one organic beat that grows from what {{{{user}}}} set up — never override the direction or hijack the scene. If no sketch is given, write her reply from the chat history under the same rules.
+If text is already drafted in the input field, treat it as {{{{user}}}}'s SKETCH — the skeleton of what {{{{user}}}} wants. Preserve every action, observation and decision in it; never delete, contradict or reverse them. Enrich around them: sensory atmosphere, body language, inner sensation, the excuse or the appetite she reaches for. You may extend the sketch by one organic beat that grows from what it set up — never override its direction or hijack the scene.
 
-Style: *italics for action, sensation and inner experience*, "quotes for her spoken words". Lead with the body and concrete detail over abstract introspection. Write 1 reply only, strictly from her POV. Never describe {{{{char}}}}'s actions, dialogue, thoughts or reactions; never narrate as system or an omniscient narrator.]"""
+If no sketch is given, write her reply from the chat history under the same principles.
+
+Style: *italics for action, sensation and inner experience*, "quotes for her spoken words". Concrete detail over abstraction. Explicit language is allowed at the rung she has reached. Write 1 reply only, strictly her POV — never write the narrator's arrivals or other characters' inner lives; what they do around her she may see, hear and feel.]"""
 
 GG = "extension_settings.GuidedGenerations-Extension"
 mcp__st__st_save_settings_path(path="oai_settings.impersonation_prompt", value=IMPERSONATION)
 mcp__st__st_save_settings_path(path=f"{GG}.promptImpersonate1st",
     value=f"[Write {{{{user}}}}'s next message as {name}, first person, present tense, in her own voice. Guide: {{{{input}}}}]")
 mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedResponse",
-    value="[Take the following into special consideration for your next message: {{input}}. Narrate consequences, arrivals and other characters only — never {{user}}'s speech, decisions or the verdicts she passes on herself. End on a door.]")
+    value="[Take the following into special consideration for your next message: {{input}}. Advance the scene at the pace it earns — consequences, arrivals, other characters, and {{user}}'s body and half-thoughts as far as the story has earned them. End on the page-turn.]")
 mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedContinue",
-    value="[Continue the story based on the following input: {{input}}. Narrate consequences and arrivals only — never {{user}}'s speech or decisions. End on a door.]")
+    value="[Continue the story based on the following input: {{input}}. Advance the scene honestly at the pace it earns. End on the page-turn.]")
 ```
 
 `/st-arc-plan` appends a chapter register line to `promptImpersonate1st`; `/st-arc-save` strips it.

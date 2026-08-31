@@ -84,7 +84,7 @@ exits 1 and names the row when creature-form × orifice × partner-config × set
 
 ## Phase 3 — Fill, render, plan, dispatch
 
-Fill the LLM slots in `recipe.json`: `char.params` (the `«…»` bindings — creature noun, what it needs, anatomy canon, the words her register stops at, self-verdict examples, tempo line, limits), `char.scenario` slots, `persona.*` (all seven Q&A groups + `voice{pov_tense, register, she_owns, she_never_writes, anatomy_stop}`), `direction.ch1` (destination · 2–3 forks as situations · 4–6 menu beats · N-GUARD · H-LIMIT · cover words · dissociation), `lore.specific` (empty in `light`; 3–6 entries in `full`), `sd` (`""` for a narrator card). Then:
+Fill the LLM slots in `recipe.json`: `char.params` (the `«…»` bindings — creature noun, what it needs, anatomy canon, cover-word examples, tone line, limits), `char.mes_example` — write the 2-exchange few-shot yourself, in the target voice, right here alongside the other card fields: a brief `{{user}}` turn into a narrator reply that demonstrates the page's beats, an NPC line in quotes, and one double-exposure sentence; this is required on every card and `render` refuses to emit one with it blank — `char.scenario` slots, `persona.*` (all seven Q&A groups + `voice.register` — her opening register; it erodes on its own as the story climbs), `direction.ch1` (destination · 2–3 forks as situations · 4–6 menu beats · N-GUARD · H-LIMIT · cover words · dissociation), `lore.specific` (empty in `light`; 3–6 entries in `full`), `sd` (`""` for a narrator card). Then:
 
 ```
 $COOK render   --recipe $SCRIPTS/<slug>/recipe.json    # fills assets/*, asserts, writes rendered/

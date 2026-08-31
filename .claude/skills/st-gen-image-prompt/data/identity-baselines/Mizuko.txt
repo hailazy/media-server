@@ -1,4 +1,4 @@
-# Mizuho — per-shot baseline (persona; identity lives in persona_descriptions["Mizuho (Persona).png"])
+# Mizuko — per-shot baseline (persona; identity lives in persona_descriptions["Mizuho (Persona).png"])
 # body (not in the permanent face block): plump, wide_hips, large_breasts, thick_thighs, soft_body
 # on duty: ward_windbreaker, baseball_cap, nitrile_gloves, waders, headlamp, clipboard
 # at home: plain_blouse, knee-length_skirt, apron, bare_feet

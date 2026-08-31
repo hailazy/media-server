@@ -391,6 +391,7 @@ def build_bindings(recipe: dict, schema: dict) -> dict:
         "FACE_ID": persona.get("face_id"),
         "POV_TENSE": voice.get("pov_tense"),
         "REGISTER": voice.get("register"),
+        "REGISTER_EARLY": voice.get("register"),
         "SHE_OWNS": voice.get("she_owns"),
         "SHE_NEVER_WRITES": voice.get("she_never_writes"),
         "ANATOMY_STOP_WORDS": voice.get("anatomy_stop"),
@@ -471,16 +472,27 @@ def cmd_render(args):
     if want("card"):
         system_prompt = render_file("card/system_prompt.tmpl")
         assert_no_placeholders(system_prompt, "card/system_prompt")
-        for header in ["VOICE FENCE.", "DIVISION OF LABOUR.", "SMALL PUSHES, SIDEWAYS FAILURES.",
-                        "DOOR.", "TEMPO.", "STYLE.", "LIMITS", "NEVER SPEAKS."]:
+        # v3 (prose-layer freed, 2026-08-31): structure lives in Direction/bible, not
+        # in per-message rationing rules — VOICE FENCE / DOOR-rotation / TEMPO's
+        # one-beat cap are dead. These 8 headers are the steering-not-fence contract.
+        for header in ["ROLE.", "{{user}} STEERS.", "HER INTERIORITY", "THE CREATURE NEVER SPEAKS.",
+                        "PACING — THE MANGA PAGE.", "THE LONG GAME.", "WORLD ALIVE.", "STYLE.", "LIMITS"]:
             if header not in system_prompt:
                 raise AssertionFailed(f"card/system_prompt: missing section header '{header}'")
 
         phi = render_file("card/post_history_instructions.tmpl")
         assert_no_placeholders(phi, "card/post_history_instructions")
-        for n in range(8):
-            if f"({n})" not in phi:
-                raise AssertionFailed(f"card/post_history_instructions: missing check ({n})")
+        # v3 PHI shape: bracketed, exactly 3 paragraphs (floor / creature-anatomy /
+        # drive) — the old 8-item numbered checklist was itself part of the
+        # over-constraint that strangled prose; never bring it back.
+        phi_body = phi.strip()
+        if not (phi_body.startswith("[") and phi_body.endswith("]")):
+            raise AssertionFailed("card/post_history_instructions: must be a single [...] block")
+        phi_paragraphs = [p for p in phi_body[1:-1].split("\n\n") if p.strip()]
+        if len(phi_paragraphs) != 3:
+            raise AssertionFailed(
+                f"card/post_history_instructions: expected 3 paragraphs (v3 shape), got {len(phi_paragraphs)}"
+            )
 
         personality = render_file("card/personality.tmpl").strip()
         assert_no_placeholders(personality, "card/personality")
@@ -494,6 +506,17 @@ def cmd_render(args):
         creator_notes = render_file("card/creator_notes.tmpl").strip()
         assert_no_placeholders(creator_notes, "card/creator_notes")
 
+        # mes_example is REQUIRED on every cooked card (v3): a 2-exchange few-shot
+        # voice anchor authored by the main loop at cook time. cook.py only passes
+        # it through — never rejects the content — but a blank slot ships a card
+        # with no style anchor at all, so that fails loudly here.
+        mes_example = char.get("mes_example", "")
+        if not mes_example.strip():
+            raise AssertionFailed(
+                "card-fields: mes_example must not be empty — every cooked card needs a "
+                "2-exchange few-shot voice anchor (recipe.char.mes_example)"
+            )
+
         create_schema = load_json(ASSETS / "card/create-body.schema.json")
         allowed_keys = set(create_schema["properties"].keys())
         card_fields = {
@@ -502,7 +525,7 @@ def cmd_render(args):
             "personality": personality,
             "scenario": scenario,
             "first_mes": char.get("first_mes", ""),
-            "mes_example": "",
+            "mes_example": mes_example,
             "creator_notes": creator_notes,
             "system_prompt": system_prompt,
             "post_history_instructions": phi,

@@ -10,7 +10,7 @@ what to undo.
 
 | Brick | Where it lives | How it's written |
 |---|---|---|
-| Card fields (system_prompt, PHI, personality, scenario, depth_prompt, creator_notes, description, first_mes, alternate_greetings, tags) | `characters/<Name>.png` (chara + ccv3 tEXt chunks) | `mcp__st__st_create_character(name, fields, file_name="")` at creation (forces `world: ""`); `mcp__st__st_merge_character(avatar, patch)` for every field added after (e.g. openers merged in by `/st-arc-plan --openers-to-card`) |
+| Card fields (system_prompt, PHI, personality, scenario, depth_prompt, creator_notes, description, first_mes, alternate_greetings, mes_example, tags) | `characters/<Name>.png` (chara + ccv3 tEXt chunks) | `mcp__st__st_create_character(name, fields, file_name="")` at creation (forces `world: ""`); `mcp__st__st_merge_character(avatar, patch)` for every field added after (e.g. openers merged in by `/st-arc-plan --openers-to-card`). `mes_example` is REQUIRED (v3, §5.1) — 2 exchanges in the target voice, authored at cook time; send both the V1 top-level key and the `data.mes_example` mirror (see the No V1↔V2 field mirroring rule below) |
 | Card lorebook link | `characters/<Name>.png` → `data.extensions.world` | `st_merge_character(avatar, {"data": {"extensions": {"world": "<LorebookName>"}}})` — **create with `world: ""`, link after**; a non-empty `world` at create time embeds a dead `character_book` copy inside the card that nothing reads afterward but that bloats the file |
 | Card lorebook content | `worlds/<LorebookName>.json` | `mcp__st__st_save_worldinfo(name, data)` — REPLACES the whole file; always read-modify-write, never a partial patch (see `st-arc-save/SKILL.md`'s entry-count-never-decreases guard) |
 | Persona description + visual/voice block | `settings.json` → `power_user.persona_descriptions["<Name> (Persona).png"].description` | `mcp__st__st_save_settings_path(path, value)` with the bracket-escape leaf (see gotcha 2 below) |
@@ -63,7 +63,7 @@ still real if a skill is ever run standalone.
    `audit-config.py`'s original static audit did not check this (fixed per the
    plan's implementation step 2); `/st-cook` clears it unconditionally as Phase 3's
    very first write, before card/persona/lorebook writes — order matters here,
-   because a stale note can otherwise contradict the fresh voice fence for however
+   because a stale note can otherwise contradict the fresh voice contract for however
    many turns pass before someone notices.
 
 ## merge-attributes rules (`st_merge_character`)

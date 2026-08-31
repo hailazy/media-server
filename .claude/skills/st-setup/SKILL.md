@@ -173,10 +173,16 @@ Goal: redistribute bloated `description` content into specialized character card
 | `description` | WHAT char IS | Visual, species/role, backstory, universal mechanics, core nature |
 | `personality` | Demeanor distillation | 5-10 keyword adjectives/phrases |
 | `scenario` | WHERE/WHEN this chat starts | Situational opener (2-3 sentences) |
-| `mes_example` | HOW char speaks | 5-7 dialogue exchanges (1500-3000 chars) |
+| `mes_example` | HOW char speaks | REQUIRED — few-shot voice anchor, 2+ exchanges (embodied dialogue cards benefit from more) |
 | `depth_prompt` | WHAT MUST HOLD per turn | 2-4 imperative behavioral anchors |
 
 **Anti-overlap rule**: Every sentence pulled from description MUST land in exactly one new field. Every sentence kept in description MUST NOT have a more-specific home. No content lives in two places.
+
+**`mes_example` is required on every card, narrator cards included.** A wordless narrator has no
+dialogue of its own to demonstrate, but the field still carries the few-shot voice anchor: 2
+exchanges (a brief `{{user}}` turn → narrator reply demonstrating beats, NPC speech, double
+exposure) written in the target prose voice. On the narrator-card path, fill it via the `/st-cook`
+recipe or by hand at cook time — never merge a card with `mes_example` left empty.
 
 ### Step A: Read full card state
 
@@ -239,7 +245,7 @@ Read full `description` (no truncation — entire field). Produce FIVE outputs:
 **3. scenario** — review existing + merge any scenario lines pulled from description
 - Format: 2-3 sentences. Skip update if existing scenario already strong.
 
-**4. mes_example** — expand to 5-7 exchanges (1500-3000 chars)
+**4. mes_example** — expand into a rich few-shot (multiple exchanges in matching voice)
 - Source: existing weak examples + dialogue snippets pulled from description + LLM-generated additions in matching voice
 - Format: `{{char}}: "..." \n{{char}}: "..."` (separate examples with blank lines or `<START>`)
 

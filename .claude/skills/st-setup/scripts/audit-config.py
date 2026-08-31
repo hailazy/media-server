@@ -208,6 +208,11 @@ def audit_precedence(s: dict, only: str | None) -> None:
                 "embedded character_book (%d entries) — NOT injected; ST only loads "
                 "extensions.world" % len(d["character_book"].get("entries", [])),
                 "dead weight in the PNG; strip it, or keep it for portability")
+        if not (d.get("mes_example") or "").strip():
+            add(WARN, "card", png.stem,
+                "mes_example is empty — no few-shot voice anchor; even a wordless narrator "
+                "card needs 2 exchanges in the target prose voice",
+                "fill mes_example via /st-cook recipe or by hand — never ship empty")
         if conflicts and not d.get("system_prompt"):
             add(WARN, "card", png.stem,
                 "system_prompt empty while a preset 'main' directive conflicts",
@@ -262,10 +267,6 @@ def audit_lorebooks(s: dict, only: str | None) -> None:
 
 
 # ───────────────────── layer 4: voice contract + steering entries ─────────────────────
-FENCE = re.compile(r"never \{\{user\}\}'s speech|never \{\{user\}\}'s speech or decisions", re.I)
-DOOR = re.compile(r"end on a door", re.I)
-
-
 def audit_voice(s: dict) -> None:
     """The impersonation prompt and the Guided Generations wrappers are GLOBAL but
     must describe the ACTIVE persona; a Direction entry must be a menu (≤120 words),
@@ -291,12 +292,6 @@ def audit_voice(s: dict) -> None:
             % (pu.get("persona_description_lorebook"), desc.get("lorebook")),
             "st_save_settings_path('power_user.persona_description_lorebook', '%s')" % (desc.get("lorebook") or ""))
     gg = (s.get("extension_settings") or {}).get("GuidedGenerations-Extension") or {}
-    for key in ("promptGuidedResponse", "promptGuidedContinue"):
-        txt = gg.get(key, "") or ""
-        if not (FENCE.search(txt) and DOOR.search(txt)):
-            add(WARN, "voice", key,
-                "guide wrapper lacks the voice fence / door rule — a guide can make the narrator speak for {{user}}",
-                "run /st-persona %s --voice" % (name or "<Name>"))
     if name and name.lower() not in (gg.get("promptImpersonate1st", "") or "").lower():
         add(WARN, "voice", "promptImpersonate1st", "wrapper does not name the active persona",
             "run /st-persona %s --voice" % name)
