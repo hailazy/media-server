@@ -33,6 +33,7 @@ from pathlib import Path
 
 ST_DATA = Path("/home/haint/Projects/home-server/sillytavern/data/default-user")
 BASELINES = "/home/haint/Projects/home-server/.claude/skills/st-gen-image-prompt/data/identity-baselines"
+CHATS = ST_DATA / "chats"
 
 # Tags that describe a SHOT, not a character. In character_prompts they force
 # every future image into one composition.
@@ -278,6 +279,12 @@ def audit_voice(s: dict) -> None:
             "does not name the active persona %r — Guided Impersonate writes a generic {{user}}" % name,
             "run /st-persona %s --voice" % name)
     desc = (pu.get("persona_descriptions") or {}).get(avatar) or {}
+    active_name = (pu.get("personas") or {}).get(avatar, "")
+    if active_name and (s.get("username") or "") != active_name:
+        add(FLAG, "voice", "username",
+            "settings.username (= name1, the name shown on every user message) is %r but the active persona is %r — "
+            "activating a persona via MCP must also write top-level `username`" % (s.get("username"), active_name),
+            "st_save_settings_path('username', '%s')" % active_name)
     if (pu.get("persona_description_lorebook") or "") != (desc.get("lorebook") or ""):
         add(FLAG, "voice", "persona_description_lorebook",
             "global persona lorebook %r != active persona's %r — ST injects the GLOBAL one (world-info.js getPersonaLorebook)"
@@ -314,6 +321,45 @@ def audit_voice(s: dict) -> None:
                     "order 100 — it is context, not a command")
 
 
+# ────────────────────────── layer 5: Author's Note ──────────────────────────
+def audit_note(s: dict) -> None:
+    """A default Author's Note (extension_settings.note.default) injects into
+    EVERY new chat; a per-chat note_prompt injects only into that one chat —
+    both are easy to leave switched on after using a chat as a scratchpad."""
+    note = s.get("extension_settings", {}).get("note", {}) or {}
+    default = (note.get("default") or "").strip()
+    if default:
+        add(FLAG, "note", "extension_settings.note.default",
+            "a default Author's Note is set — it injects into EVERY new chat "
+            "at depth %s" % note.get("defaultDepth"),
+            "st_save_settings_path('extension_settings.note.default', '')")
+
+    for path in sorted(CHATS.glob("*/*.jsonl")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                first_line = f.readline()
+            meta = json.loads(first_line)
+        except Exception:
+            continue
+        note_prompt = (meta.get("chat_metadata", {}).get("note_prompt") or "").strip()
+        if note_prompt:
+            add(WARN, "note", str(path.relative_to(ST_DATA)),
+                "per-chat Author's Note is set: %s" % note_prompt[:60])
+
+
+# ───────────────────────────── layer 6: orphans ─────────────────────────────
+def audit_orphans(s: dict) -> None:
+    """Entries that outlive the card/persona they describe — nobody deletes
+    these on their own, so they silently pile up."""
+    # (orphan character_prompts keys are already reported by audit_sd_prompts)
+    on_disk = {p.stem for p in (ST_DATA / "characters").glob("*.png")}
+    persona_names = set((s.get("power_user", {}).get("personas") or {}).values())
+    owners = on_disk | persona_names
+    for txt in sorted(Path(BASELINES).glob("*.txt")):
+        if txt.stem not in owners:
+            add(WARN, "orphans", txt.stem, "identity baseline has no owner")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--char", help="scope to one character name (no .png)")
@@ -329,6 +375,8 @@ def main() -> int:
     audit_precedence(s, a.char)
     audit_lorebooks(s, a.char)
     audit_voice(s)
+    audit_note(s)
+    audit_orphans(s)
 
     if a.as_json:
         print(json.dumps(findings, ensure_ascii=False, indent=2))
@@ -339,7 +387,8 @@ def main() -> int:
     if not findings:
         print("No config-layer problems found.")
         return 0
-    for area in ["sd-prompts", "sd-style", "precedence", "card", "lorebook", "voice", "steering"]:
+    for area in ["sd-prompts", "sd-style", "precedence", "card", "lorebook", "voice",
+                 "steering", "note", "orphans"]:
         rows = [f for f in findings if f["area"] == area]
         if not rows:
             continue

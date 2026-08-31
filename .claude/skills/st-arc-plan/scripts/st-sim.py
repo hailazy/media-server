@@ -840,10 +840,11 @@ class Builder:
 # Scenarios
 # --------------------------------------------------------------------------- #
 
-def load_scenarios():
-    if not os.path.exists(SCENARIOS_PATH):
-        die("scenario file missing: " + SCENARIOS_PATH)
-    return {s["id"]: s for s in _read_json(SCENARIOS_PATH)["scenarios"]}
+def load_scenarios(path=None):
+    path = path or SCENARIOS_PATH
+    if not os.path.exists(path):
+        die("scenario file missing: " + path)
+    return {s["id"]: s for s in _read_json(path)["scenarios"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -1111,9 +1112,10 @@ def post_openrouter(body, key, timeout=300):
 
 
 def cmd_run(args):
-    scenarios = load_scenarios()
+    scenarios_path = args.scenarios or SCENARIOS_PATH
+    scenarios = load_scenarios(scenarios_path)
     if args.scenario not in scenarios:
-        die("unknown scenario %r (have: %s)" % (args.scenario, ", ".join(sorted(scenarios))))
+        die("unknown scenario %r in %s (have: %s)" % (args.scenario, scenarios_path, ", ".join(sorted(scenarios))))
     sc = scenarios[args.scenario]
     b = Builder(args.char, args.persona)
     body, meta = b.build(opener_index=args.opener_index, player_turns=sc["player_turns"])
@@ -1169,9 +1171,10 @@ def cmd_run(args):
 def cmd_build(args):
     turns = []
     if args.scenario:
-        scenarios = load_scenarios()
+        scenarios_path = args.scenarios or SCENARIOS_PATH
+        scenarios = load_scenarios(scenarios_path)
         if args.scenario not in scenarios:
-            die("unknown scenario %r (have: %s)" % (args.scenario, ", ".join(sorted(scenarios))))
+            die("unknown scenario %r in %s (have: %s)" % (args.scenario, scenarios_path, ", ".join(sorted(scenarios))))
         turns = scenarios[args.scenario]["player_turns"]
     b = Builder(args.char, args.persona)
     body, meta = b.build(opener_index=args.opener_index, player_turns=turns)
@@ -1202,11 +1205,13 @@ def main(argv=None):
     p.add_argument("--opener-index", type=int, default=0,
                    help="which greeting to use: 0=first_mes, 1..=alternate_greetings")
     p.add_argument("--scenario", help="also append this scenario's player turns")
+    p.add_argument("--scenarios", help="override the scenario file (default: data/sim-scenarios.json)")
     p.add_argument("--out", help="write the request body JSON here (default /tmp/st-sim-build.json)")
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("run", help="build + POST non-stream to OpenRouter")
     p.add_argument("--scenario", required=True)
+    p.add_argument("--scenarios", help="override the scenario file (default: data/sim-scenarios.json)")
     p.add_argument("--char")
     p.add_argument("--persona", help="persona name or avatar file (default: the active persona)")
     p.add_argument("--opener-index", type=int, default=0)

@@ -1,0 +1,153 @@
+{
+  "slug": "fixture-bland",
+  "created": "2026-08-30",
+  "profile": "light",
+  "idea": "A municipal building inspector finds something wrong with the water line, and it is wrong with her instead.",
+  "status": "cooking",
+  "bible_path": "bible.md",
+  "concept": {
+    "premise": "An ordinary undocumented organism founds in a meticulous municipal inspector during a routine check; she never learns what is in her and concludes it is her own nature.",
+    "protagonist": "Asa Ito, a municipal building inspector",
+    "wound": "if I am careful enough, nothing bad happens on my watch",
+    "engine": "Breaking Bad, self-blame edition",
+    "axes": ["radius of harm", "culpability"],
+    "chapters": 1,
+    "ending_shape": "the inspector becomes the thing she was hired to catch, and signs off on it herself",
+    "limits": ["minors", "blood/gore/wounds", "pain or fear as the point", "scat/watersports", "furry/anthro", "a cure or reveal"]
+  },
+  "char": {
+    "name": "The Organism",
+    "kind": "narrator",
+    "tags": ["Non-Human", "Fempov", "Narrator", "NSFW"],
+    "creator_notes": "",
+    "description": "The organism is not a person and never speaks; it narrates what happens to Asa Ito and around her.",
+    "personality": "",
+    "scenario": "",
+    "depth_prompt": "",
+    "system_prompt": "",
+    "post_history_instructions": "",
+    "first_mes": "*The sub-basement of the municipal office is warmer than it should be, and Asa Ito has already written that down before she has decided why it matters.*",
+    "alternate_greetings": [],
+    "params": {
+      "PROTAGONIST_NAME": "Asa Ito",
+      "SHE": "she",
+      "HER": "her",
+      "HERS": "hers",
+      "CREATURE_NOUN": "organism",
+      "CREATURE_NOUN_CAP": "Organism",
+      "ANATOMY_CANON": "the organism's entry, pressure, grip and every change are limited to a single internal site; nothing above that site ever changes.",
+      "CREATURE_NEEDS": "warmth, contact, a quiet room, time undisturbed",
+      "ANATOMY_CANON_CHECK": "the organism's site is unchanged from the canon paragraph; nothing above it changed; nothing bled",
+      "LEDGER_AXES": "form of the organism · location · partner · setting · register",
+      "CAMPAIGN_TITLE": "Nothing Filed",
+      "LOREBOOK_NAME": "The Organism Lore",
+      "HOST_PRONOUN": "her",
+      "CORRUPTION_AXIS": "professional caution bending toward personal permissiveness",
+      "IRREVERSIBLE_SCOPE": "the host's stress-response pathways",
+      "PRESSURE_CHANNEL": "sensation and intent laid directly into the host's nervous system",
+      "SEASON_PLACE": "Early spring, a mid-size municipal district",
+      "PROTAGONIST_ONE_LINE": "Asa Ito, 30, a municipal building inspector who has never missed a deadline",
+      "OPENING_SITUATION": "is alone in the sub-basement of the municipal office, checking a water line that should not be warm",
+      "BODY_TAGS": "average_build, medium_breasts, athletic",
+      "ON_DUTY_TAGS": "inspector_uniform, hard_hat, clipboard, flashlight",
+      "AT_HOME_TAGS": "plain_shirt, house_clothes, bare_feet",
+      "MATURE_LOCK_IN": "(adult:1.3), 30_years_old",
+      "NEGATIVE_ALWAYS": "schoolgirl, school_uniform, teenager, child, young_girl, loli, elderly",
+      "CREATURE_TAGS": "no_humans, organism, pale, segmented, wet, glossy, dim_lighting",
+      "CREATURE_NEGATIVE": "1girl, humanoid, face, cute, chibi, cartoon, blood, gore",
+      "HOST_FRAME_RULE": "use the Asa Ito persona baseline; the organism stays internal and unseen",
+      "WORK_PROP": "the inspection valve",
+      "COVER_EXCUSE": "that the sub-basement is always overheated this time of year",
+      "WORKPLACE": "the municipal office",
+      "NEIGHBOUR_NPC": "Reiko",
+      "NEIGHBOUR_TRADE": "a small dry-cleaning counter",
+      "SIDE_LOCATION": "the storeroom behind the counter",
+      "MORNING_ROUTINE": "coat still on, paperwork already open",
+      "HARM_WORD": "to bruise"
+    }
+  },
+  "persona": {
+    "name": "Asa Ito",
+    "age": 30,
+    "gender": "Female",
+    "ethnicity": "Japanese",
+    "appearance": "5'6\", athletic build, short dark hair, brown eyes; practical, unremarkable clothes.",
+    "demeanor": "Punctual, guarded, dry-humoured; treats every problem as a checklist.",
+    "social_context": "Municipal building inspector, lives alone, five years on the job, never once late.",
+    "keywords": "punctual, guarded, checklist-minded, ashamed easily",
+    "face_id": "1girl, japanese, adult_female, short_black_hair, brown_eyes, oval_face",
+    "negatives": "schoolgirl, teenager, child, elderly",
+    "avatar": { "source": "forge", "seed": 12345, "file": null },
+    "voice": {
+      "pov_tense": "first person, present tense",
+      "register": "guarded, dry, checklist-minded; deflects with procedure",
+      "she_owns": "her words, her decisions, her cover stories, her resistance, the verdicts she passes on herself",
+      "she_never_writes": "arrivals, other characters' interiority, the world's consequences, the organism's needs",
+      "anatomy_stop": "seam, pulse, the give"
+    }
+  },
+  "lore": {
+    "generic": [
+      { "id": "dominance", "keys": ["control", "trance", "resist", "resistance", "habit", "routine"] },
+      { "id": "irreversible", "keys": ["corrupt", "corruption", "irreversible", "cure", "clinic"] },
+      { "id": "pressure-signature", "keys": [] }
+    ],
+    "specific": []
+  },
+  "direction": {
+    "ch1": {
+      "title": "Line Item",
+      "destination": "an organism enters her during the water-line inspection; by the end she has filed the report and gone back to the office awake.",
+      "forks": ["what she writes in the inspection report", "what she tells her supervisor", "whether she goes back down the next day"],
+      "menu": ["the itch on day two", "a second visit, awake", "a colleague who notices something is off", "a missed callback she can't explain"],
+      "n_guard": "no second partner, no second location",
+      "h_limit": "standard",
+      "cover_words": "the heat, old plumbing, something I ate",
+      "dissociation": "a lost twenty minutes"
+    },
+    "previous_direction": null
+  },
+  "sd": {
+    "char_prompts_positive": "",
+    "char_prompts_negative": "",
+    "baseline_txt": ""
+  },
+  "reuse": {
+    "persona": { "verdict": "cook", "source": null },
+    "card": { "verdict": "cook", "source": null },
+    "lorebook": { "verdict": "cook", "source": null },
+    "voice": { "verdict": "cook", "source": null },
+    "baseline": { "verdict": "cook", "source": null },
+    "scenarios": { "verdict": "reuse", "source": "assets/sim-scenarios.tmpl.json" }
+  },
+  "dispatch": [
+    { "kind": "file", "args": "write _scripts/fixture-bland/bible.md from bible.skeleton.md", "why": "Phase 1 concept sheet" },
+    { "kind": "mcp", "args": "st_save_settings_path(extension_settings.note.default, '')", "why": "bug #3 fix by construction" },
+    { "kind": "mcp", "args": "st_create_character(name='The Organism', fields=<card-fields.json>, world='')", "why": "create the narrator card" },
+    { "kind": "mcp", "args": "st_merge_character(avatar='The Organism.png', patch={data:{extensions:{world:'The Organism Lore'}}})", "why": "link the card lorebook" },
+    { "kind": "skill", "args": "/st-persona Asa Ito --new --from-recipe", "why": "build the persona from recipe.persona" },
+    { "kind": "skill", "args": "/st-persona Asa Ito --voice", "why": "always re-apply the global voice contract (bug #1 fix by construction)" },
+    { "kind": "skill", "args": "/st-arc-plan --from-script bible.md#ch1 --from-recipe --openers-to-card --scenarios rendered/sim-scenarios.json", "why": "Direction + openers + sim gate" }
+  ],
+  "ledger_row": {
+    "slug": "fixture-bland",
+    "date": "2026-08-30",
+    "title": "Nothing Filed",
+    "engine": "Breaking Bad, self-blame edition",
+    "creature": "organism",
+    "protagonist_kind": "narrator-pov host",
+    "axes": ["radius of harm", "culpability"],
+    "orifice": ["undisclosed"],
+    "partner_config": ["solo"],
+    "setting": "municipal office",
+    "register": "guarded, dry",
+    "profile": "light",
+    "chapters": 1,
+    "ending_shape": "the inspector becomes the thing she was hired to catch, and signs off on it herself",
+    "status": "cooking",
+    "closed": null,
+    "assets": {},
+    "brain_id": null
+  },
+  "writes": []
+}

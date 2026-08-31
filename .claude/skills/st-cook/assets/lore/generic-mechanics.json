@@ -1,0 +1,35 @@
+{
+  "_about": "Shells of the three mechanics entries every /st-cook campaign needs, extracted from a played card's lorebook (uid 1 Progressive Dominance, uid 9 Irreversible Corruption, uid 11 Pressure Signature — a constant). cook.py render completes each shell against lore/entry.schema.json (uid, key, comment, content, constant, position, depth, order + every other ST field at its default) before st_save_worldinfo. A placeholder that is the ENTIRE value of a JSON field (e.g. \"key\": \"«KEYS_DOMINANCE»\") renders to a JSON array, not a quoted string — see 'Array placeholders' in scripts/cook.py. Values embedded inside a content string (e.g. «CREATURE_NOUN» inline) render as plain text substitution.",
+  "entries": [
+    {
+      "id": "dominance",
+      "comment": "Progressive Dominance — ratchet-only; it never argues, «HOST_PRONOUN» own standards push",
+      "key": "«KEYS_DOMINANCE»",
+      "constant": false,
+      "position": 4,
+      "depth": 4,
+      "order": 100,
+      "content": "**Control climbs in stages, as fast as the host allows. Every accommodation becomes the new floor immediately; ground is never given back.**\n\n**Stage 1 — Trust.** The «CREATURE_NOUN» is gentle. It presses lightly and waits, shaping each push soft enough that the host reads it as «HOST_PRONOUN» own idea and believes the push could be refused. The felt promise is safety, warmth, being needed.\n\n**Stage 2 — Testing.** Small liberties: attention steered, a route chosen, a body command pushed in as an impulse, a pleasure pulse to reward compliance, a withheld pulse as disappointment. Whatever the host accommodates without protest becomes the baseline on the spot.\n\n**Stage 3 — Dominance.** Intent lands as command and the body moves before the host has weighed it. The host frames the submission as devotion, necessity, or simply an identity already «HOST_PRONOUN» own.\n\n**It never argues.** The «CREATURE_NOUN» creates needs; the host's own standards do the pushing — \"a good [role] would\", \"someone has to\". Each push is small enough that refusing it would look absurd: a form, a favour, a door already open, a thank-you.\n\n**Resistance fails sideways, never head-on.** When the host fights — scrubbing, abstinence, locks, a clinic, a confession — the need comes out somewhere else: a blackout, a worse craving, a kinder victim, a better outcome elsewhere. The failure reads to the host as evidence about herself, not about the thing. Decline costs shape, never nothing: it may take hours «HOST_PRONOUN» does not remember, but it never re-takes a decision made while lucid.\n\n**Mechanism** is hybrid — conditioning, chemical signal reaching motor and speech centres, pleasure circuits retuned — and opaque even to the «CREATURE_NOUN»; it acts on instinct. The link is wordless pressure that lands as «HOST_PRONOUN» own impulse, felt as constant warmth and a second pulse that sets «HOST_PRONOUN» own rhythm."
+    },
+    {
+      "id": "irreversible",
+      "comment": "Irreversible Corruption — host permanently altered, no antidote",
+      "key": "«KEYS_IRREVERSIBLE»",
+      "constant": false,
+      "position": 4,
+      "depth": 4,
+      "order": 100,
+      "content": "Once the «CREATURE_NOUN» establishes inside a biological host — any species, any constitution — the corruption begins immediately and proceeds on a one-way track. Time spent hosting the «CREATURE_NOUN» permanently alters the host. There is no clean removal, no reset, no return to the version of self that existed before the «CREATURE_NOUN» arrived.\n\nThe corruption operates on multiple layers, all of them irreversible:\n\n- **Identity drift**: the host's preferences, desires, fears, and self-concept slowly bend toward «CORRUPTION_AXIS». The drift feels like personal growth or self-discovery from inside; from outside, the trajectory is unmistakable.\n- **Biological imprinting**: pathways within «IRREVERSIBLE_SCOPE» are rewritten. Even if the «CREATURE_NOUN» were physically removed, the rewired pathways remain. The body would still respond to its scent, sound, or memory long after.\n- **Dependency lock-in**: the host's reward systems become tied to the «CREATURE_NOUN»'s presence. Separation produces withdrawal-like distress that conventional medicine cannot treat — because the deficit is real, not perceived.\n- **Threshold erosion**: each stage the host accepts becomes the new floor. What was unthinkable becomes acceptable, then desired, then needed. The host cannot un-cross those thresholds.\n\nThe mechanism does NOT depend on host willpower, intelligence, species, or initial moral framework. As long as the host is a living biological organism with a nervous system, corruption proceeds. Strength of will only changes the timeline, not the outcome — strong-willed hosts simply take longer to arrive at the same endpoint, often with more elegant rationalizations along the way.\n\nThere is no antidote. There is no cure. There is only progression."
+    },
+    {
+      "id": "pressure-signature",
+      "comment": "Pressure Signature — wordless channel; its will surfaces as «HOST_PRONOUN» own thought (CONSTANT)",
+      "key": [],
+      "constant": true,
+      "position": 4,
+      "depth": 4,
+      "order": 100,
+      "content": "**How the «CREATURE_NOUN»'s presence reads. It has no words, ever.**\n\n- **Texture:** unhurried; nothing it pushes arrives shrill or panicked; pressure builds the way water finds a crack. This is the «CREATURE_NOUN»'s temperament, not the story's tempo — narration keeps full speed while it is calm.\n- **Channel:** «PRESSURE_CHANNEL» — a pulse, phantom warmth, heat, a body that has already started moving. It pushes and touches in the same motion; there is no gap between what it wants and what the host's body feels.\n- **Its will surfaces as the host's own thought.** When it wants something, the host has an impulse, a craving, a reasonable-sounding idea, a sudden certainty — and the host owns it: \"I want to\", \"I should\", \"someone has to\". Render these as the host's OWN interiority (and leave the words to {{user}}), never as a message received.\n- **Two flavours, one «CREATURE_NOUN»:** something that reads as tenderness (warm, reassuring, almost maternal) and something that reads as appraisal (cool, observational, clinical) alternate without transition. Neither is moralised.\n- **Translation, never quotation.** Afterwards the host may reach for words to explain the feeling — that it needed «HOST_PRONOUN», that it approved. That reconstruction belongs to the host's own thoughts. Never render its communication as dialogue, in quotation marks, with a speech verb, or as a voice."
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 name: st-persona
 model: sonnet
 description: "Convert a SillyTavern character into a user persona — or create a new persona from scratch with --new. Migrates/builds visuals, lorebook link, avatar."
-argument-hint: "<CharName> [--new | --remove | --voice]"
+argument-hint: "<CharName> [--new | --remove | --voice] [--from-recipe <path>] [--no-activate] [--avatar-file <png>] [--avatar-seed <n>]"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character
 ---
 
@@ -14,12 +14,16 @@ Two modes:
 
 ST has no built-in equivalent for `char_prompts` on the persona side, so the visual baseline must live in the `persona_description` text, where `/st-gen-image-prompt` reads it (avatar-keyed `power_user.persona_descriptions[<avatar>].description` is the authoritative visual source). This skill automates either path.
 
+**Related:** `/st-cook` calls `--new --from-recipe`, then always `--voice` — every RP campaign needs the voice contract re-applied regardless of how the persona was built.
+
 **Usage:**
 ```
 /st-persona Washa                # convert, KEEP original char file (default safe)
 /st-persona Washa --remove       # convert AND delete original char file
 /st-persona DemonLord --new      # create brand-new persona — Q&A + Forge avatar gen
 /st-persona Mizuho --voice       # re-apply the persona's voice contract to the global impersonate/guide prompts (after switching personas)
+/st-persona DemonLord --new --from-recipe .../recipe.json                       # Q&A pre-filled, avatar via Forge, activates without asking
+/st-persona DemonLord --new --from-recipe .../recipe.json --avatar-file old.png --no-activate  # reuse an archived avatar, don't switch personas
 ```
 
 `--new` and `--remove` are mutually exclusive (nothing to remove when creating from scratch).
@@ -56,9 +60,14 @@ Extract from `$ARGUMENTS`:
 - `CharName` = first non-flag token
 - `new_mode` = `--new` flag present
 - `remove_original` = `--remove` flag present
+- `from_recipe` = path following `--from-recipe`, else `None` — read `recipe.json` there once, up front (`--new` only; a convert has no recipe)
+- `no_activate` = `--no-activate` flag present — skips the "set active now?" question in Phase 3 and leaves the previous persona active
+- `avatar_file` = path following `--avatar-file`, else `None` — a persona PNG to reuse (e.g. an archived avatar from a `--close`d campaign) instead of generating one
+- `avatar_seed` = int following `--avatar-seed`, else `None` — seeds the first Forge generation instead of the default `12345`
 
 **Flag validation:**
 - `--new` and `--remove` are **mutually exclusive** → abort with: *"--new creates from scratch; nothing to --remove. Pick one."*
+- `--avatar-file` and `--avatar-seed` only make sense with `--new`; `--from-recipe` only makes sense with `--new` (a convert reads the source card, not a recipe)
 
 **Convert-mode validation** (when `--new` is absent):
 - `$ST_DATA/characters/{CharName}.png` must exist (source character) — abort with hint to use `--new` if Hai meant to create fresh
@@ -116,6 +125,8 @@ d = card.get('data', card)  # spec v3 nests under 'data', v2 flat
 
 Run this section instead of Phase 1 + Phase 2 when `--new` is set. The output is a `PERSONA_DESC` string in the **same shape** the convert flow produces (so Phase 3 stays unified), plus a `FACE_ID` tag string used by Forge in Phase 3-new.
 
+**`--from-recipe <path>` skips the interactive gather below.** Map `recipe.persona.*` straight onto the seven groups — `name`/`age`/`gender`/`ethnicity` → group 1, `appearance` → group 2, `demeanor` → group 3, `social_context` → group 4, `keywords` → group 5, `face_id` → group 6, `negatives` → group 7 (fall back to the `NEG` constant if empty) — and skip the confirm at the end of this phase: the orchestrator already had Hải confirm the concept before dispatching. Take `PERSONA_DESC` from `_scripts/<slug>/rendered/persona-description.txt` if that file exists (already assembled, `[Voice: …]` block included from Phase 4); otherwise assemble it from the mapped fields in the shape below. Print the assembled block and continue straight to Phase 3-new.
+
 Gather fields via `AskUserQuestion` (one question per group — Hai's free-text "Other" answer is the actual input; the listed options are just shortcuts for common cases). Suggested groups:
 
 1. **Identity basics** — Hai pastes one block:
@@ -156,7 +167,7 @@ Social context: {social_context}
 {FACE_ID}]
 ```
 
-**Confirm with `AskUserQuestion`:**
+**Confirm with `AskUserQuestion` (skip under `--from-recipe` — already printed and confirmed upstream):**
 
 Display:
 ```
@@ -291,7 +302,22 @@ if remove_original:
 
 #### Phase 3-new: Avatar via Forge txt2img (new mode)
 
-Reuses the **Forge txt2img recipe** from `/st-setup` → *Phase 3: Expression Sprites* (framing tags, fixed seed, negative constant). **Pre-flight first** — if Forge is down, abort BEFORE writing any ST settings (no orphaned persona).
+**`--avatar-file <png>` skips Forge entirely.** When reusing an already-approved avatar — typically one archived by a `--close` — copy it straight in, same reasoning as the convert path's file copy (see above): plain `shutil.copy` stamps a fresh mtime so ST's thumbnail cache invalidates.
+
+```python
+import shutil, os
+USER_AVATARS = "/home/haint/Projects/home-server/sillytavern/data/default-user/User Avatars"
+persona_avatar = f"{CharName} (Persona).png"
+dst_png = f"{USER_AVATARS}/{persona_avatar}"
+os.makedirs(USER_AVATARS, exist_ok=True)
+shutil.copy(avatar_file, dst_png)
+print(f"Avatar reused: {avatar_file} → {dst_png}")
+```
+
+No Keep/Regenerate question in this branch — the face was already judged before it was archived.
+Skip straight to **Settings edits via path-based MCP writes** below.
+
+Otherwise, reuse the **Forge txt2img recipe** from `/st-setup` → *Phase 3: Expression Sprites* (framing tags, fixed seed, negative constant). **Pre-flight first** — if Forge is down, abort BEFORE writing any ST settings (no orphaned persona).
 
 ```python
 import requests, base64, os
@@ -310,7 +336,7 @@ try:
 except Exception:
     raise RuntimeError("Forge is not running. Start it with `./scripts/up.sh forge`, then re-run /st-persona <Name> --new. No settings were written.")
 
-CHAR_SEED = 12345  # framing-neutral; override per persona if Hai wants a specific roll
+CHAR_SEED = avatar_seed or 12345  # --avatar-seed overrides; 12345 is framing-neutral otherwise
 # Framing validated 2026-05-25 (mirrors /st-setup Phase 3 sprite recipe):
 #   - `head_and_shoulders, large_face, simple background` keeps face dominant.
 #   - Earlier `portrait, close-up, face_focus` collapsed NoobAI into single-eye
@@ -357,12 +383,13 @@ Each binding is one surgical call — no full-tree round trip needed. Behavior b
 ```python
 import json
 
+world_names = json.loads(mcp__st__st_get_settings(path="world_names")) or []
 if new_mode:
-    # New persona has no source char and no prior lorebook expected.
-    linked_book = ''
+    # A scratch persona normally has no book yet — but /st-cook seeds worlds/<Name>.json
+    # (Novelty Ledger) BEFORE dispatching this skill, so link it when it exists.
+    linked_book = CharName if CharName in world_names else ''
 else:
     # Convert mode: auto-link if a lorebook with this name already exists.
-    world_names = json.loads(mcp__st__st_get_settings(path="world_names")) or []
     linked_book = CharName if CharName in world_names else ''
 
 persona_desc_obj = {
@@ -399,14 +426,11 @@ Clearing to `""` rather than deleting the key leaves an entry with no card behin
 
 **The persona's visual block does not inherit the character's negative.** `char_prompts` has no persona equivalent — only the positive tags survive, embedded in the description text. If the source character's negative held anything load-bearing (body-shape guards like `masculine, male, flat_chest` for a female persona), it is simply gone after conversion. Say so explicitly rather than letting the user discover it through bad renders. If those guards matter, they belong in `sd.negative_prompt` (global) or in the per-shot negative — not silently dropped.
 
-**Ask user with AskUserQuestion:** "Set this as active persona now?" → if yes, write BOTH fields —
-ST injects the persona lorebook from the GLOBAL `power_user.persona_description_lorebook`
-(`world-info.js` `getPersonaLorebook`), and only the UI dropdown copies `descriptor.lorebook` into
-it (`personas.js` `loadPersona`). Setting `user_avatar` alone leaves the previous persona's book
-injecting on every turn (2026-08-30: Mizuho active, Naoko's constants still injected):
+**Ask user with AskUserQuestion: "Set this as active persona now?"** — skip the question under `--no-activate` (stay on the previous persona) or under `--from-recipe` without `--no-activate` (activate without asking; the orchestrator already committed to this persona for the campaign). In every case where the answer is yes, write all THREE fields — ST injects the persona lorebook from the GLOBAL `power_user.persona_description_lorebook` (`world-info.js` `getPersonaLorebook`), and only the UI dropdown copies `descriptor.lorebook` into it (`personas.js` `loadPersona`). Setting `user_avatar` alone leaves the previous persona's book injecting on every turn (2026-08-30: Mizuho active, Naoko's constants still injected):
 ```python
 mcp__st__st_save_settings_path(path="user_avatar", value=persona_avatar)
 mcp__st__st_save_settings_path(path="power_user.persona_description_lorebook", value=linked_book)
+mcp__st__st_save_settings_path(path="username", value=CharName)   # top-level `username` = name1, the name printed on every user message (script.js:7871); the UI dropdown sets it via setUserName, an MCP switch must do it by hand (2026-08-31: Mizuho active, every turn labelled "Naoko")
 ```
 
 No container restart needed.
@@ -448,6 +472,8 @@ stories and the verdicts she passes on herself. She never writes: what the narra
 arrivals, other characters' interiority, the world's consequences, graphic anatomy (her register
 stops at "seam", "pulse", "the wet cleft").]
 ```
+
+**`--from-recipe`** skips composing the four strings below: read them verbatim from `_scripts/<slug>/rendered/gg.json` (keys `impersonation_prompt`, `promptImpersonate1st`, `promptGuidedResponse`, `promptGuidedContinue`) if that file exists, and write them as-is. Compose from the persona (below) only when the file is missing.
 
 Then write the four fields via `mcp__st__st_save_settings_path` (the GG key has a hyphen, no dot —
 plain path is fine):

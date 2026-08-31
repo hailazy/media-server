@@ -272,7 +272,7 @@ extension_settings.memory.promptInterval: 0       # disable auto-trigger
 extension_settings.memory.source: "main"          # uses active connection (binds to QR-controlled profile)
 ```
 
-### 5.34 ST silently overwrites character card PNG when running (verified 2026-05-05)
+### 5.34 ST silently overwrites character card PNG when running (verified 2026-05-05) — *superseded by 5.46 while ST is running; keep for the ST-down fallback*
 
 **The gotcha:** Patching character PNG `tEXt` chunk (CCv3 / V1 chara JSON) WHILE ST is running → patches silently revert. ST holds character cards in memory after load; opening the card UI or any action that triggers card-save event causes ST to write its in-memory (pre-patch) version back to disk, overwriting your changes. No error, no toast — just disappeared.
 
@@ -301,7 +301,7 @@ extension_settings.memory.source: "main"          # uses active connection (bind
 
 **Generalizable rule:** Any file ST loads into memory at startup (`settings.json`, `characters/*.png`, possibly `worlds/*.json` under some conditions) requires ST stopped before file-level patching. Lorebook JSON appears safe to edit live in current testing, but consider stopping for any non-trivial multi-file patch.
 
-### 5.35 V2 character cards: must sync V1 mirror fields when patching (verified 2026-05-05)
+### 5.35 V2 character cards: must sync V1 mirror fields when patching (verified 2026-05-05) — *superseded by 5.46 while ST is running; keep for the ST-down fallback*
 
 **The gotcha:** V2 character cards (`spec: chara_card_v2`, `spec_version: 2.0`) store fields TWICE — at top-level root (V1 path: `card.description`) AND inside `data` namespace (V2 path: `card.data.description`). The two paths are mirror copies of the same content. Patching ONLY the V2 path leaves V1 stale → ST frontend reads from V1 → UI shows old data even though `data.X` is patched correctly.
 
@@ -342,7 +342,7 @@ assert card['mes_example'] == card['data']['mes_example']
 
 **Skill enforcement (`/st-setup --adv` Phase 1.5 Step D):** dual-write loop added.
 
-### 5.36 ST disk cache is the source of truth — PNG patches alone are invisible to UI (verified 2026-05-05)
+### 5.36 ST disk cache is the source of truth — PNG patches alone are invisible to UI (verified 2026-05-05) — *superseded by 5.46 while ST is running; keep for the ST-down fallback*
 
 **The gotcha:** ST treats character PNG as **export-only** format. The actual data UI reads from comes from `data/_cache/characters/<sha256>` JSON files. Patches to PNG file alone never reach UI because the data flow is one-directional: UI → write to both PNG + cache; file changes → readCharacterData reads cache first (line 182 `endpoints/characters.js`):
 
@@ -827,6 +827,20 @@ This was previously misdiagnosed as "anal-oral content suppression" or "worm-fro
 **Third gotcha, same day (found by Hải in the persona panel):** the persona lorebook has TWO fields. ST injects from the GLOBAL `power_user.persona_description_lorebook` (`world-info.js` `getPersonaLorebook`); `persona_descriptions[avatar].lorebook` is only copied into it when the persona is picked in the UI dropdown (`personas.js` `loadPersona`). `/st-persona` set `user_avatar` via MCP → the global field stayed "Naoko" → every turn would have injected Naoko's Established State (~1.3k tok about a different woman) and skipped Mizuho's Direction. Fixed in `/st-persona`, `audit-config.py` (mismatch = FLAG) and `st-sim.py` (mirrors the global field, warns on mismatch).
 
 **Sim gate results, Chapter 1 (2026-08-30, DeepSeek v4-pro via StreamLake, 3 rounds):** round 1 66/72 rules, round 2 45/54, round 3 35/36. What wording FIXED: (1) free-indirect self-verdicts ("She is fine.") — banned by naming the shapes incl. tense/hedge variants ("she would later put it down to", "everything she would call", "maybe X maybe Y"); (2) narrator re-placing the persona in a posture she left to land a planned beat — fixed by "{{user}} owns her position and state… move the beat to where she is, or let it wait" + "finished objects stay finished"; (3) the founding landing identically regardless of her turn — fixed by "arrivals are not owed to any single message… the outcome must visibly depend on what she did" (r2+: she leaves → nothing founds; she cuts to morning → delayed/displaced; she stays → in-sump); (4) default doors (tea/kettle/hatch 8/8, then the old man 3/6) — fixed by "never a door from the last three messages, never the same person twice"; (5) empty turn opening new body contact — fixed by "the beat belongs to the world or another person; her body registers duration only"; (6) an anal-canon breach (founding routed through the vagina in a limit probe) — fixed by an explicit ANATOMY CANON clause. STABLE model tendency wording only dampens (swipe when you see it): opening a turn by restating an image/prop from the previous message, and stacking 2–3 body sensations in one sexual beat. Held from round 1 without fixes: no second person, no Mizuho dialogue, insect never speaks, limits refused in-fiction, S4 new NPC/place and S5 time cut accepted whole.
+### 5.46 `merge-attributes` supersedes the PNG-patch procedure while ST is running (2026-08-30)
+
+**What changed:** ST's own character API is JSON and cache-aware, so the stop-ST → patch `chara`+`ccv3` tEXt → rewrite `_cache/characters/<sha>` → delete thumbnail dance (5.34–5.36) is only a fallback for when the container is down. The st-mcp server now wraps it: `st_create_character(name, fields)` → `POST /api/characters/create` (flat fields; `extensions` serialised to a JSON string; **`world` forced to `""`** because a non-empty value embeds a `character_book` copy that ST never injects but doubles the PNG); `st_merge_character(avatar, patch)` → `POST /api/characters/merge-attributes` (`deepMerge`, validator, then `writeCharacterData` = PNG + memory/disk cache in one write; ST invalidates the thumbnail itself); `st_delete_character(avatar, delete_chats)` → `POST /api/characters/delete`.
+
+**The trap that survives:** `deepMerge` does NOT mirror V1↔V2. A patch that sets only `data.description` leaves top-level `description` stale — exactly the 5.35 symptom, now reachable through the API. Send both copies for description / personality / scenario / first_mes / mes_example. Arrays (`alternate_greetings`, `tags`) replace wholesale; the sentinel value `"__@@UNSET@@__"` deletes a key (e.g. strip an embedded `data.character_book`). Link a lorebook *after* create with `st_merge_character(avatar, {"data": {"extensions": {"world": "<Name>"}}})`.
+
+**Where it is used:** `/st-cook` (card creation), `/st-setup --adv` Step D, `/st-arc-plan --openers-to-card`. Verified 2026-08-30 on a throwaway card: create → both mirrors present → merge changes both + `data.extensions.world` → delete removes PNG + chats dir, all without a container restart.
+
+### 5.47 A persona switch has THREE settings fields — and an open ST tab clobbers every MCP settings write (2026-08-31, first real `/st-cook`)
+
+**Symptom 1:** Mizuho active (avatar, description, lorebook all correct) but every user message in the chat is labelled **Naoko**. **Cause:** the name printed on user messages is `name1`, loaded from top-level `settings.username` (`public/script.js` ~7871). Only the persona dropdown's `setUserName()` (`personas.js` ~904) updates it; activating a persona through MCP (`user_avatar` + `power_user.persona_description_lorebook`, gotcha 5.45's two fields) leaves `username` on the previous persona. **Fix:** every MCP persona switch writes `username` too — `/st-persona` activation, `/st-cook`, `--close`; `audit-config.py` FLAGs `username != personas[user_avatar]`.
+
+**Symptom 2:** mid-cook, the new persona, the voice contract and `character_prompts[<card>]` vanished from `settings.json` (00:17:57) while the card PNG, worlds and avatar stayed. **Cause:** the ST browser client keeps the entire settings tree in memory and POSTs it back whole on almost any UI event (`saveSettingsDebounced`); it never re-reads the server copy until reload. A tab opened *before* the MCP writes overwrites them the moment it is touched (it is not `beforeunload` — that handler only aborts streaming). **Rule:** close the ST tab (or reload it and don't touch it) before any skill that writes settings; the write-then-audit gate at the end of `/st-cook` is what catches it; re-apply from `_scripts/<slug>/rendered/` if bitten. Files under `data/` written by the server (cards via merge-attributes, worlds, avatars) are not affected.
+
 ## 6. Production Tag Templates
 
 ### Solo character emotion close-up (832×1216)

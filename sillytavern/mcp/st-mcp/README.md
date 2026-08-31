@@ -6,8 +6,12 @@ MCP server wrapping SillyTavern's internal REST API (`localhost:8000/api/*`) for
 
 - `st_get_settings` — read current ST settings.json
 - `st_save_settings` — write settings; ST hot-reloads (no restart)
+- `st_save_settings_path` — surgical single-path settings write (no full-tree round-trip)
 - `st_list_characters` — list all character cards
 - `st_get_character` — read character card data
+- `st_create_character` — create a new character card from flat V2 fields
+- `st_merge_character` — patch an existing character card in place (deepMerge, arrays replace)
+- `st_delete_character` — delete a character card (IRREVERSIBLE)
 - `st_get_recent_chat` — read most recent chat for a character
 - `st_get_worldinfo` — read a World Info lorebook
 - `st_save_worldinfo` — write a World Info lorebook

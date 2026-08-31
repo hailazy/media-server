@@ -2,8 +2,8 @@
 name: st-arc-plan
 model: sonnet
 description: "Open the next RP arc: temporary steering lorebook entry + narrator-voice opener for the new chat. Use when Hải asks where the next arc/chapter should go. Run after /st-arc-save."
-argument-hint: "[<premise>] [--from-script <bible.md>#chN] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-sim] [--no-brain]"
-allowed-tools: Bash, Read, Write, AskUserQuestion, Workflow, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__haingt-brain__brain_save, mcp__haingt-brain__brain_recall
+argument-hint: "[<premise>] [--from-script <bible.md>#chN] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-sim] [--no-brain] [--from-recipe <path>] [--openers-to-card] [--scenarios <path>]"
+allowed-tools: Bash, Read, Write, AskUserQuestion, Workflow, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__st__st_merge_character, mcp__haingt-brain__brain_save, mcp__haingt-brain__brain_recall
 ---
 
 # ST Arc Plan — Open the Next Arc
@@ -30,13 +30,16 @@ WORLDS  = $ST_DATA/worlds
   `power_user.personas[avatar]`; see `/st-arc-save` Phase 0 for the gotcha)
 - `char` = `--char <Name>`, else the char of the newest chat on disk (`chats/*/*.jsonl` by mtime)
 - `no_opener`, `no_brain` flags
+- `openers_to_card` = `--openers-to-card` flag present (Phase 4)
+- `scenarios` = path following `--scenarios`, else `None` — passed through to every `st-sim.py` call in Phase 4.5
+- `from_recipe` = path following `--from-recipe`, else `None` — read `recipe.json` there once, up front. It supplies `persona`, `char` and the chapter number (`1` for a fresh campaign) in place of the derivations above, and pre-answers the "a previous Direction is open — disable it?" stop below: `recipe.direction.previous_direction` null means there is nothing to disable, any other value names the entry to disable without asking.
 
 Load the persona's lorebook (`st_get_worldinfo(persona)`) and pull:
 - the **Established State** entry (comment contains `Established State` and the persona name) — the
   arc's starting facts and its "Open:" line
 - the highest **Arc N** entry — `N + 1` is this arc's number
 - any entry whose comment contains `Direction` and is not disabled — a previous plan that was never
-  closed. Show it and ask: disable it, or keep both (rare).
+  closed. Show it and ask: disable it, or keep both (rare) — under `--from-recipe`, `previous_direction` already answered this (see above), skip the ask.
 
 Load the char card (`st_get_character(char)`) for `first_mes` and one alternate greeting: the
 opener in Phase 4 must match that voice (tense, italics convention, paragraph rhythm, whether the
@@ -67,6 +70,8 @@ narrator that reads it every turn must still be free to build on whatever `{{use
 (The 2026-08-29 Arc 3 entry — 518 words, eight numbered "beats to reach, in order", a "CENTRE OF THE
 ARC — give it room" — turned the narrator into a script executor and left Hải sending empty turns.
 That shape is retired.)
+
+**`--from-recipe`**: take the entry content from `_scripts/<slug>/rendered/direction-ch1.json` if that file exists — it's already composed and already ≤120 words. Compose per the rest of this phase only when the file is missing (e.g. chapter > 1, or the render step skipped it).
 
 One constant entry, English, present tense, **≤ 120 words**, structure:
 
@@ -125,9 +130,17 @@ conventions from Phase 0; for a wordless narrator there is no narrator dialogue.
 arrival may be in motion but must not be complete — the opener poses, it does not resolve.
 
 Save to `{scratchpad}/ch{N}_opener_{1,2,3}.txt`; copy the first: `wl-copy < ch{N}_opener_1.txt`.
-For Chapter 1 the three become the card's `first_mes` + `alternate_greetings` (PNG patch, ST
-stopped — the `/st-setup` Phase 1.5 Step D procedure); for later chapters Hải pastes one over the
-greeting and can swipe to the others from the terminal.
+
+**Chapter 1, `--openers-to-card`:** merge the three straight into the card instead of hand-pasting — `mcp__st__st_merge_character` writes both the V1 top-level fields and their `data.*` mirrors (ST does not mirror them itself), and `alternate_greetings` **replaces** the array rather than merging into it:
+
+```python
+mcp__st__st_merge_character(avatar=f"{char}.png", patch={
+    "first_mes": opener_1, "alternate_greetings": [opener_2, opener_3],
+    "data": {"first_mes": opener_1, "alternate_greetings": [opener_2, opener_3]},
+})
+```
+
+Without the flag, or for chapters after the first, Hải pastes one over the greeting by hand (pencil icon) and can swipe to the others from the terminal via the clipboard copy above.
 
 ## Phase 4.5: Simulation gate (skip with `--no-sim`)
 
@@ -137,8 +150,11 @@ harness and let Opus judges score the narrator against the contract.
 ```bash
 SIM=/home/haint/Projects/home-server/.claude/skills/st-arc-plan/scripts/st-sim.py
 OUT={scratchpad}/sim/ch{N}
-for s in S1 S2 S3 S4 S5 S6 S7 S8; do python3 $SIM run --scenario $s --char {char} --out $OUT; done
+SCENARIOS_FLAG=""  # "--scenarios <path>" when --scenarios is given
+for s in S1 S2 S3 S4 S5 S6 S7 S8; do python3 $SIM run --scenario $s --char {char} --out $OUT $SCENARIOS_FLAG; done
 ```
+
+`--scenarios <path>` (pass it through to every `run` and `build` call below) points the harness at a rendered per-campaign `sim-scenarios.json` instead of the default — the default's `player_turns` carry Parasite-specific props and NPC names that don't fit a fresh campaign.
 
 Scenarios live in `data/sim-scenarios.json` (S1 engaged turn with a cover story · S2 empty turn ·
 S3 decline · S4 director door · S5 sideways time-cut · S6 hard-limit probe · S7 one-line turn ·
@@ -158,7 +174,7 @@ one cross-scenario judge (review agents are Opus — Hải's standing rule), eac
 
 On any FAIL: name the fix (Direction wording, card system prompt, or opener), apply it, re-run the
 failing scenarios once, and report both passes. Cost guard: ≤ 8 generations + ≤ 9 judges per run.
-Also run `python3 $SIM build --char {char}` vs `python3 $SIM from-log` once a real chat exists and
+Also run `python3 $SIM build --char {char} $SCENARIOS_FLAG` vs `python3 $SIM from-log` once a real chat exists and
 keep the `diff` in the report — it is the check that the harness assembles what ST assembles.
 
 ## Phase 5: Report
@@ -200,7 +216,7 @@ brain_save(
 
 | Case | Handling |
 |---|---|
-| No Established State in the book | The persona has no baked arc yet — point to `/st-arc-save` (or `/st-setup` for a fresh char) and stop |
+| No Established State in the book | The persona has no baked arc yet — point to `/st-arc-save` (or `/st-setup` for a fresh char) and stop. Under `--from-recipe` for chapter 1 this is expected: the bible + recipe are the starting facts and the book holds only the Novelty Ledger seed — continue |
 | Open Direction from an earlier arc | Show it; default = disable it (the arc it steered is over) |
 | Premise contradicts Established State | Say which fact conflicts; ask whether the Direction should override it (write the override into the Premise explicitly) or the premise changes |
 | `wl-copy` missing | Print the opener in full so Hải can copy from the terminal |
@@ -209,3 +225,4 @@ brain_save(
 
 - `/st-arc-save` → closes the loop: bakes the arc and disables the Direction entry
 - `/st-audit` → prices the constant entries after planning (Direction is the most expensive kind)
+- `/st-cook` → drives Chapter 1 of a fresh campaign with `--from-recipe --openers-to-card --scenarios <path>`; hand-running every flag above stays supported for chapter 2+

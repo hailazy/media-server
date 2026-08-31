@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ST /api/characters/create flat body",
+  "description": "Exact flat field list accepted by ST's characters/create endpoint (src/endpoints/characters.js, charaFormatData). cook.py render/validate check every create-body key produced from a recipe against this list — additionalProperties:false so a stray or misspelled field fails loudly instead of silently landing in a V1 field ST ignores. 'world' MUST be '' at create time (st_create_character forces this); a non-empty value embeds a dead character_book. Link a lorebook afterwards via st_merge_character on data.extensions.world.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ch_name": { "type": "string", "minLength": 1 },
+    "file_name": { "type": "string" },
+    "description": { "type": "string" },
+    "personality": { "type": "string" },
+    "scenario": { "type": "string" },
+    "first_mes": { "type": "string" },
+    "mes_example": { "type": "string" },
+    "creator_notes": { "type": "string" },
+    "system_prompt": { "type": "string" },
+    "post_history_instructions": { "type": "string" },
+    "creator": { "type": "string" },
+    "character_version": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "alternate_greetings": { "type": "array", "items": { "type": "string" } },
+    "talkativeness": { "type": ["string", "number"] },
+    "fav": { "type": "boolean" },
+    "depth_prompt_prompt": { "type": "string" },
+    "depth_prompt_depth": { "type": "integer" },
+    "depth_prompt_role": { "type": "string", "enum": ["system", "user", "assistant"] },
+    "extensions": { "type": "string", "description": "JSON-stringified object, NOT a nested object — st_create_character serialises the dict for you." },
+    "world": { "type": "string", "const": "", "description": "Always '' at create time; link the lorebook after create via st_merge_character({avatar, data: {extensions: {world: <name>}}})." }
+  },
+  "required": ["ch_name", "description", "system_prompt", "world"]
+}

@@ -20,7 +20,9 @@ mcp = FastMCP(
     instructions=(
         "SillyTavern data API — manage characters, chats, settings, and lorebooks "
         "without restarting the ST container. ST hot-reloads on st_save_settings "
-        "and st_save_worldinfo. Pair with /st-setup, /st-persona, /st-audit, "
+        "and st_save_worldinfo. Create/patch/delete characters with st_create_character, "
+        "st_merge_character, st_delete_character — no PNG tEXt-patch, no container stop. "
+        "Pair with /st-setup, /st-persona, /st-audit, "
         "/st-arc-save, /st-arc-plan, /st-gen-image-prompt skills. Use path-based getters/setters "
         "to avoid 80KB+ full-tree dumps."
     ),
@@ -268,6 +270,98 @@ async def st_get_character(name: str) -> str:
             slim = {k: v for k, v in result.items() if k not in _CHAR_HEAVY_FIELDS}
             return json.dumps(slim, ensure_ascii=False, indent=2)
         return json.dumps(result, ensure_ascii=False, indent=2)
+    except STError as e:
+        raise RuntimeError(str(e))
+
+
+@mcp.tool(annotations={"openWorldHint": True})
+async def st_create_character(name: str, fields: dict, file_name: str = "") -> str:
+    """Create a new character card from flat V2 fields.
+
+    Leave `world` unset — this tool forces it to "" always. A non-empty `world` makes ST
+    embed a dead `character_book` copy of the lorebook inside the card, which then drifts
+    from the live lorebook file since ST reads World Info from the linked lorebook, not
+    the embedded copy. Link a lorebook AFTER creation instead:
+      st_merge_character(avatar, {"data": {"extensions": {"world": "<LorebookName>"}}})
+
+    No file upload — ST assigns its default avatar image and creates chats/<name>/ for
+    the new character on disk. `fields` accepts any flat card field ST's create endpoint
+    takes: description, personality, scenario, first_mes, mes_example, creator_notes,
+    system_prompt, post_history_instructions, creator, character_version, talkativeness,
+    fav, tags (list or comma string), alternate_greetings (list), depth_prompt_prompt,
+    depth_prompt_depth, depth_prompt_role, extensions (dict — auto-serialized to a JSON
+    string here; ST JSON.parses it and deep-merges into data.extensions).
+
+    Returns the avatar filename ST assigned (e.g. "Name.png") — pass it straight into
+    st_merge_character / st_delete_character / st_get_character.
+
+    Pair with: st_merge_character (fill in the rest, link a lorebook), st_get_character.
+    """
+    body = {**fields, "ch_name": name, "file_name": file_name or name, "world": ""}
+    if isinstance(body.get("extensions"), dict):
+        body["extensions"] = json.dumps(body["extensions"], ensure_ascii=False)
+    try:
+        result = await st_post("/api/characters/create", body)
+        return result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+    except STError as e:
+        raise RuntimeError(str(e))
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+async def st_merge_character(avatar: str, patch: dict) -> str:
+    """Patch an existing character card in place — replaces the PNG tEXt-patch procedure.
+
+    No container stop needed; ST rewrites the PNG through writeCharacterData and updates
+    its own memory/disk caches on the spot. deepMerge semantics apply: nested objects
+    merge key by key, but ARRAYS REPLACE WHOLESALE (e.g. patching `tags` with one entry
+    wipes the rest of the list).
+
+    ST does NOT mirror V1↔V2 fields for you — the caller must send both sides to keep
+    them in sync, e.g.:
+      {"description": "...", "data": {"description": "..."}}
+    for description, personality, scenario, first_mes, mes_example (and any other V1/V2
+    pair).
+
+    Sentinel value "__@@UNSET@@__" as a field's value deletes that key instead of
+    setting it.
+
+    ST validates the merged card with TavernCardValidator before writing; an invalid
+    shape returns 400 with a {message, error} body.
+
+    Returns "ok" on success, or the ST error message on failure (never raises for a
+    normal 4xx — check the returned string).
+
+    Pair with: st_get_character (read before merge, to know what's already there),
+    st_create_character.
+    """
+    av = avatar if avatar.endswith(".png") else f"{avatar}.png"
+    try:
+        result = await st_post("/api/characters/merge-attributes", {"avatar": av, **patch})
+        if isinstance(result, str):
+            return "ok" if not result.strip() else result
+        return json.dumps(result, ensure_ascii=False)
+    except STError as e:
+        return str(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+async def st_delete_character(avatar: str, delete_chats: bool = False) -> str:
+    """Delete a character card. IRREVERSIBLE — back up first (/st-cook --close does this).
+
+    Removes the PNG card from disk and invalidates ST's thumbnail cache for it. Pass
+    delete_chats=True to also remove chats/<name>/ (all chat history for the character);
+    otherwise the chat files are orphaned but left on disk.
+
+    Accepts bare name or avatar filename.
+
+    Pair with: st_get_character (confirm identity before deleting), st_create_character.
+    """
+    av = avatar if avatar.endswith(".png") else f"{avatar}.png"
+    try:
+        result = await st_post("/api/characters/delete", {"avatar_url": av, "delete_chats": delete_chats})
+        if isinstance(result, str):
+            return "ok" if not result.strip() else result
+        return json.dumps(result, ensure_ascii=False)
     except STError as e:
         raise RuntimeError(str(e))
 

@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "st-cook recipe",
+  "description": "The single artifact every /st-cook phase reads and writes, at sillytavern/data/default-user/_scripts/<slug>/recipe.json (gitignored). scripts/cook.py validate checks a recipe against this file with a small hand-rolled validator (no jsonschema dependency) — required keys, enum membership, basic types. scripts/cook.py render reads recipe.char.params / recipe.persona / recipe.direction.ch1 / recipe.lore to fill assets/**.tmpl.",
+  "type": "object",
+  "required": ["slug", "created", "profile", "idea", "status", "bible_path", "concept", "char", "persona", "lore", "direction", "sd", "reuse", "dispatch", "writes"],
+  "additionalProperties": false,
+  "properties": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "Filesystem-safe campaign id; also the _scripts/<slug>/ dirname and the ledger key." },
+    "created": { "type": "string", "description": "ISO date the recipe was first written, e.g. 2026-08-30." },
+    "profile": { "type": "string", "enum": ["light", "full"], "description": "light = default card avatar, no expression sprites, minimal/no lore.specific. full = Forge headshot, --expr sprites, 3-6 lore.specific entries." },
+    "idea": { "type": "string", "description": "Hải's original one-line idea, verbatim." },
+    "status": { "type": "string", "enum": ["cooking", "played", "closed"] },
+    "bible_path": { "type": "string", "description": "Path to the ≤1-page bible.md written from bible.skeleton.md, relative to _scripts/<slug>/." },
+    "concept": {
+      "type": "object",
+      "description": "Phase 1 output (LLM-authored, main loop). Mirrors bible.skeleton.md §1-3, §7.",
+      "required": ["premise", "protagonist", "wound", "engine", "axes", "chapters", "ending_shape", "limits"],
+      "additionalProperties": false,
+      "properties": {
+        "premise": { "type": "string" },
+        "protagonist": { "type": "string" },
+        "wound": { "type": "string" },
+        "engine": { "type": "string" },
+        "axes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "chapters": { "type": "integer", "minimum": 1 },
+        "ending_shape": { "type": "string" },
+        "limits": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "char": {
+      "type": "object",
+      "description": "Card fields — template output (system_prompt, post_history_instructions, personality, depth_prompt, scenario, creator_notes) plus LLM-authored slots (description, first_mes, alternate_greetings) plus the params bag render binds templates from.",
+      "required": ["name", "kind", "tags", "creator_notes", "description", "personality", "scenario", "depth_prompt", "system_prompt", "post_history_instructions", "first_mes", "alternate_greetings", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["narrator", "embodied"], "description": "narrator skips /st-setup (st-cook writes empty character_prompts + creature-only baseline itself); embodied dispatches /st-setup for SD baseline + audit." },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "creator_notes": { "type": "string" },
+        "description": { "type": "string" },
+        "personality": { "type": "string" },
+        "scenario": { "type": "string" },
+        "depth_prompt": { "type": "string" },
+        "system_prompt": { "type": "string" },
+        "post_history_instructions": { "type": "string" },
+        "first_mes": { "type": "string" },
+        "alternate_greetings": { "type": "array", "items": { "type": "string" } },
+        "params": {
+          "type": "object",
+          "description": "Every «PLACEHOLDER» binding used by assets/card/*.tmpl. Keys are the placeholder names without guillemets (e.g. \"PROTAGONIST_NAME\", \"CREATURE_NOUN\").",
+          "additionalProperties": true
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "required": ["name", "age", "gender", "ethnicity", "appearance", "demeanor", "social_context", "keywords", "face_id", "negatives", "avatar", "voice"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": ["integer", "string"] },
+        "gender": { "type": "string" },
+        "ethnicity": { "type": "string" },
+        "appearance": { "type": "string" },
+        "demeanor": { "type": "string" },
+        "social_context": { "type": "string" },
+        "keywords": { "type": "string" },
+        "face_id": { "type": "string", "description": "Booru-tag face/identity block for [Visual reference for image generation: ...]." },
+        "negatives": { "type": "string" },
+        "avatar": {
+          "type": "object",
+          "required": ["source"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "enum": ["forge", "file"] },
+            "seed": { "type": ["integer", "null"] },
+            "file": { "type": ["string", "null"], "description": "Path to an archived PNG when source=file (reuse via --avatar-file)." }
+          }
+        },
+        "voice": {
+          "type": "object",
+          "required": ["pov_tense", "register", "she_owns", "she_never_writes", "anatomy_stop"],
+          "additionalProperties": false,
+          "properties": {
+            "pov_tense": { "type": "string" },
+            "register": { "type": "string" },
+            "she_owns": { "type": "string" },
+            "she_never_writes": { "type": "string" },
+            "anatomy_stop": { "type": "string" }
+          }
+        }
+      }
+    },
+    "lore": {
+      "type": "object",
+      "required": ["generic", "specific"],
+      "additionalProperties": false,
+      "properties": {
+        "generic": {
+          "type": "array",
+          "description": "Bindings for assets/lore/generic-mechanics.json's 3 shells (dominance, irreversible, pressure-signature). Always 3 entries.",
+          "items": {
+            "type": "object",
+            "required": ["id", "keys"],
+            "properties": {
+              "id": { "type": "string", "enum": ["dominance", "irreversible", "pressure-signature"] },
+              "keys": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "specific": {
+          "type": "array",
+          "description": "LLM-authored campaign-specific entries. 0 under profile=light; 3-6 under profile=full.",
+          "items": {
+            "type": "object",
+            "required": ["comment", "content", "key", "constant", "position", "depth"],
+            "properties": {
+              "comment": { "type": "string" },
+              "content": { "type": "string" },
+              "key": { "type": "array", "items": { "type": "string" } },
+              "constant": { "type": "boolean" },
+              "position": { "type": "integer" },
+              "depth": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "direction": {
+      "type": "object",
+      "required": ["ch1", "previous_direction"],
+      "additionalProperties": false,
+      "properties": {
+        "ch1": {
+          "type": "object",
+          "required": ["title", "destination", "forks", "menu", "n_guard", "h_limit", "cover_words", "dissociation"],
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string" },
+            "destination": { "type": "string" },
+            "forks": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "menu": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "n_guard": { "type": "string" },
+            "h_limit": { "type": "string" },
+            "cover_words": { "type": "string" },
+            "dissociation": { "type": "string" }
+          }
+        },
+        "previous_direction": { "type": ["null", "string"], "description": "uid or comment of an open Direction entry from a prior arc in the same book; null pre-answers /st-arc-plan's conflict stop." }
+      }
+    },
+    "sd": {
+      "type": "object",
+      "required": ["char_prompts_positive", "char_prompts_negative", "baseline_txt"],
+      "additionalProperties": false,
+      "properties": {
+        "char_prompts_positive": { "type": "string", "description": "\"\" for a narrator card — nothing is painted onto the host." },
+        "char_prompts_negative": { "type": "string" },
+        "baseline_txt": { "type": "string", "description": "Rendered baseline.tmpl variant (embodied or creature-only) for this campaign." }
+      }
+    },
+    "reuse": {
+      "type": "object",
+      "description": "Phase 2 inventory verdict per brick. Each value names WHAT to do and, for reuse/adapt, the source on disk.",
+      "required": ["persona", "card", "lorebook", "voice", "baseline", "scenarios"],
+      "additionalProperties": false,
+      "properties": {
+        "persona": { "$ref": "#/definitions/reuseVerdict" },
+        "card": { "$ref": "#/definitions/reuseVerdict" },
+        "lorebook": { "$ref": "#/definitions/reuseVerdict" },
+        "voice": { "$ref": "#/definitions/reuseVerdict" },
+        "baseline": { "$ref": "#/definitions/reuseVerdict" },
+        "scenarios": { "$ref": "#/definitions/reuseVerdict" }
+      }
+    },
+    "dispatch": {
+      "type": "array",
+      "description": "Ordered Phase 3 dispatch list — what cook.py plan --dry-run prints.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "args", "why"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["skill", "mcp", "file"] },
+          "args": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "ledger_row": {
+      "type": "object",
+      "description": "Phase 4 output appended to _scripts/ledger.json — see references/close-procedure.md and references/inventory-scoring.md for field meaning.",
+      "properties": {
+        "slug": { "type": "string" },
+        "date": { "type": "string" },
+        "title": { "type": "string" },
+        "engine": { "type": "string" },
+        "creature": { "type": "string" },
+        "protagonist_kind": { "type": "string" },
+        "axes": { "type": "array", "items": { "type": "string" } },
+        "orifice": { "type": "array", "items": { "type": "string" } },
+        "partner_config": { "type": "array", "items": { "type": "string" } },
+        "setting": { "type": "string" },
+        "register": { "type": "string" },
+        "profile": { "type": "string", "enum": ["light", "full"] },
+        "chapters": { "type": "integer" },
+        "ending_shape": { "type": "string" },
+        "status": { "type": "string", "enum": ["cooking", "played", "closed"] },
+        "closed": { "type": ["string", "null"] },
+        "assets": { "type": "object" },
+        "brain_id": { "type": ["string", "null"] }
+      }
+    },
+    "writes": {
+      "type": "array",
+      "description": "Every ST path or file this recipe's dispatch touched, appended as Phase 3 executes. --close only ever removes paths listed here (and only if they still exist on disk).",
+      "items": { "type": "string" }
+    }
+  },
+  "definitions": {
+    "reuseVerdict": {
+      "type": "object",
+      "required": ["verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "type": "string", "enum": ["reuse", "adapt", "cook"] },
+        "source": { "type": ["string", "null"], "description": "Path or name of the on-disk brick being reused/adapted; null when verdict=cook." }
+      }
+    }
+  },
+  "x-defaults": {
+    "_about": "Fallback values for template placeholders that are almost always the same across campaigns. Phase 3 binds recipe.char.params (and persona.voice) from these UNLESS the concept/persona explicitly overrides one — e.g. a campaign with a slower register would set POV_TENSE itself instead of taking the default.",
+    "NARRATOR_ADJECTIVES": "wordless, unhurried, exact, tender-clinical, patient, never moralising, never explaining",
+    "POV_TENSE": "first person, present tense",
+    "TEMPO_LINE": "Doujinshi, not novel:",
+    "LIMITS_LIST": "minors anywhere near sex; blood, wounds, gore; pain, violence or fear as the point; scat, watersports; furry/anthro; a cure, a reveal, an explanation",
+    "H_LIMIT": "minors, blood, pain, scat, furry, cure, reveal, the «CREATURE_NOUN» speaking",
+    "N_GUARD": "no new partner, no escalation past the chapter's obligatory arrival",
+    "SELF_VERDICT_EXAMPLES": "'She is fine.', 'Nothing is wrong.', 'she tells herself', 'what she notices is', 'her body mistakes it for'",
+    "NOBODY_IS_COMING": "Nobody is coming to help her, teach her, or notice"
+  }
+}

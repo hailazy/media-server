@@ -3,22 +3,25 @@ name: st-setup
 model: sonnet
 description: "Onboard a SillyTavern character — set SD visual baseline + audit. Optional: redistribute card fields, generate expressions, build lorebook."
 argument-hint: "<CharName> [--adv] [--expr] [--lore] [--all] | --audit"
-allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character, mcp__st__st_save_worldinfo
+allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character, mcp__st__st_save_worldinfo, mcp__st__st_merge_character
 ---
 
 # ST Setup — Character Onboarding
 
 One command to fully onboard a new SillyTavern character: extract visual baseline from card data, set char_prompts, audit SD settings, generate 28 expression sprites, create World Info lorebook.
 
+**Related:** `/st-cook` drives this skill with `--from-recipe` as one brick in a full campaign cook; hand-running every flag below stays fully supported.
+
 **Usage:**
 ```
 /st-setup Parasite            # baseline + audit only
-/st-setup Parasite --adv      # + redistribute description into Advanced Definition fields (PNG patch)
+/st-setup Parasite --adv      # + redistribute description into Advanced Definition fields (merge into live card)
 /st-setup Parasite --expr     # + generate 28 expression sprites
 /st-setup Parasite --lore     # + create World Info lorebook
 /st-setup Parasite --all      # all features (--adv + --expr + --lore)
 /st-setup --audit             # settings audit only, no char
 /st-setup Parasite --sim      # + dynamic audit: generate narrator turns for scenarios S1/S2/S6/S7 and judge them (see /st-arc-plan Phase 4.5)
+/st-setup Parasite --from-recipe .../recipe.json --no-audit   # cooked baseline, no per-brick approval or audit (/st-cook use)
 ```
 
 `--sim` runs the card-level subset of the simulation gate defined in `/st-arc-plan` Phase 4.5
@@ -66,12 +69,14 @@ Run `/home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-conf
 
 Extract from `$ARGUMENTS`:
 - `CharName` = first non-flag token (e.g., `"Parasite"`)
-- Flags: `--adv`, `--expr`, `--lore`, `--all` (enables `--adv` + `--expr` + `--lore`), `--audit`
+- Flags: `--adv`, `--expr`, `--lore`, `--all` (enables `--adv` + `--expr` + `--lore`), `--audit`, `--from-recipe <path>`, `--no-audit`
 
 Resolve flags:
 - `adv = '--adv' in args or '--all' in args`
 - `expr = '--expr' in args or '--all' in args`
 - `lore = '--lore' in args or '--all' in args`
+- `from_recipe = path following '--from-recipe', else None` — read `recipe.json` there once, up front
+- `no_audit = '--no-audit' in args` — a `/st-cook` campaign runs `audit-config.py` once at the end; running it per-brick here would just repeat the same read
 
 Validate:
 - If `--audit` only: skip to Phase 2 audit step
@@ -123,7 +128,9 @@ So human-anatomy suppression is a per-shot decision. Keep it out of here and pas
 
 Skip verification of tags you take from the card's own description; check anything you invented against Danbooru counts (`/st-gen-image-prompt` bundles that lookup).
 
-**Present to user with AskUserQuestion:**
+**`--from-recipe <path>` short-circuits all of the above.** Take `sd.char_prompts_positive`, `sd.char_prompts_negative`, and `sd.baseline_txt` verbatim from `recipe.json`, print them, and skip straight to **Write the per-shot baseline file** below — no AskUserQuestion. The orchestrator already had Hải confirm the concept before dispatching this brick; re-asking here would be one approval per brick instead of one per campaign.
+
+**Present to user with AskUserQuestion (skip under `--from-recipe`):**
 ```
 Proposed SD baseline for {CharName}:
 
@@ -145,6 +152,7 @@ os.makedirs(BASELINES, exist_ok=True)
 baseline_path = f"{BASELINES}/{char_name}.txt"
 with open(baseline_path, 'w') as f:
     f.write(stripped_pose_setting_framing_tags)  # the tags left out of char_prompts_positive above
+    # under --from-recipe, this is recipe.sd.baseline_txt verbatim instead
 print(f"✓ Baseline written: {baseline_path}")
 ```
 
@@ -268,139 +276,42 @@ Options:
 - `"Edit before applying"` — ask user to paste manual edits per field
 - `"Skip Advanced Def"` — abort Phase 1.5, continue to Phase 2
 
-### Step D: Patch PNG tEXt chunk
+### Step D: Merge into the live card
 
-**CRITICAL: ST MUST be stopped before patching PNG.** ST holds character cards in memory and will overwrite the file when the user opens the card or triggers any save event — silently reverting all patches.
-
-```bash
-cd /home/haint/Projects/home-server && ./scripts/down.sh sillytavern
-```
-
-Verify ST is down before proceeding:
-
-```python
-import subprocess
-r = subprocess.run(['podman','ps','--format','{{.Names}}'], capture_output=True, text=True)
-assert 'sillytavern' not in r.stdout, "ST still running — abort patch!"
-```
+`mcp__st__st_merge_character(avatar, patch)` deep-merges the patch straight into the card, rewrites
+the PNG *and* the disk cache in one server-side call, and needs no container stop or restart — the
+"stop ST → patch tEXt chunk → patch cache → delete thumbnail" dance below only exists because that's
+what it took before this tool existed. ST does **not** mirror V1 ↔ V2 on its own, so send both the
+top-level fields and their `data.*` copies — a field patched at only one level shows correct from
+the API and stale in the UI (or the reverse). Arrays **replace**, they don't merge: send the whole
+`mes_example` string, not a diff.
 
 ```python
-import struct, zlib, shutil
-
-# Backup
-shutil.copy2(PNG_PATH, BACKUP_PATH)
-print(f"Backup: {BACKUP_PATH}")
-
-# Update V2 path (card.data.X)
-d['description'] = trimmed_description
-d['personality'] = personality_content
-d['scenario']    = scenario_content     # only if changed
-d['mes_example'] = mes_example_content
-if 'extensions' not in d:
-    d['extensions'] = {}
-d['extensions']['depth_prompt'] = {
-    'prompt': depth_prompt_content,
-    'depth': 2,
-    'role': 'system'
+patch = {
+    "description": trimmed_description,   "personality": personality_content,
+    "scenario": scenario_content,          "mes_example": mes_example_content,
+    "data": {
+        "description": trimmed_description, "personality": personality_content,
+        "scenario": scenario_content,       "mes_example": mes_example_content,
+        "extensions": {"depth_prompt": {"prompt": depth_prompt_content, "depth": 2, "role": "system"}},
+    },
 }
-
-# Re-encode + SYNC V1 top-level fields
-# CRITICAL: V2 cards (chara_card_v2 / ccv3) keep mirror fields at root level (card.X).
-# ST frontend reads from V1 top-level paths — failing to sync them = silent UI bug
-# (UI shows old data even though card.data.X is patched correctly).
-if 'data' in card:
-    card['data'] = d
-    # Sync V1 mirror fields with V2 data
-    for field in ['description', 'personality', 'scenario', 'mes_example', 'first_mes']:
-        if field in d:
-            card[field] = d[field]
-else:
-    # V1-only card (rare, legacy)
-    card = d
-
-new_json = json.dumps(card, ensure_ascii=False, separators=(',', ':'))
-new_b64 = base64.b64encode(new_json.encode('utf-8'))
-
-# Patch ALL card-bearing chunks (see Step A dual-chunk gotcha).
-# Iterate offsets from LAST → FIRST so earlier offsets stay valid as we splice.
-new_png = png_data
-for chunk_start, chunk_keyword, old_total, _ in sorted(card_chunks, key=lambda x: -x[0]):
-    new_payload = chunk_keyword + b'\x00' + new_b64
-    new_length_bytes = struct.pack('>I', len(new_payload))
-    new_crc_bytes = struct.pack('>I', zlib.crc32(b'tEXt' + new_payload) & 0xFFFFFFFF)
-    new_chunk = new_length_bytes + b'tEXt' + new_payload + new_crc_bytes
-    new_png = new_png[:chunk_start] + new_chunk + new_png[chunk_start + old_total:]
-    print(f"✓ Patched {chunk_keyword.decode()} chunk @ {chunk_start}")
-
-with open(PNG_PATH, 'wb') as f:
-    f.write(new_png)
-
-print(f"✓ Wrote PNG: {PNG_PATH}  ({len(png_data)} → {len(new_png)} bytes)")
-print(f"  Restore: cp {BACKUP_PATH} {PNG_PATH}")
+mcp__st__st_merge_character(avatar=f"{char_name}.png", patch=patch)
 ```
 
-**MANDATORY: Patch ST disk cache file** — PNG patch alone is invisible to UI.
+If Step A flagged an embedded `character_book` worth stripping, delete it in the same call with the
+unset sentinel: `patch["data"]["character_book"] = "__@@UNSET@@__"`.
 
-ST's `readCharacterData()` (in `src/endpoints/characters.js`) reads from cache first (memoryCache → diskCache → parse PNG only on miss). UI feeds from cache. Patches to PNG file alone never reach UI because data flow is one-directional: UI → write file + cache; file changes → readCharacterData reads cache, not PNG. Even cache-nuke + ST restart can result in regenerated cache containing stale data (mechanism unclear, empirically observed).
+### Fallback when ST is down (legacy PNG patch)
 
-**Fix: patch BOTH PNG (Step D above) AND cache file's `value` field with same patched JSON.**
-
-```python
-import os, json, hashlib
-
-CACHE_DIR = "/home/haint/Projects/home-server/sillytavern/data/_cache/characters"
-
-# The cache key is path + PNG mtime ("data/default-user/characters/<Char>.png-<mtime_ms>").
-# Step D just rewrote the PNG, which changed its mtime — so ANY pre-existing entry for
-# this character is now keyed to a stale mtime and will never be hit by ST's lookup.
-# Always compute the POST-WRITE mtime key and write that entry; delete other stale
-# entries for this character so an old mtime can't win a future race.
-mtime_ms = os.path.getmtime(PNG_PATH) * 1000
-cache_key = f"data/default-user/characters/{char_name}.png-{mtime_ms}"
-target_fname = hashlib.sha256(cache_key.encode()).hexdigest()
-target_cache_path = os.path.join(CACHE_DIR, target_fname)
-
-for fname in os.listdir(CACHE_DIR):
-    fpath = os.path.join(CACHE_DIR, fname)
-    if fpath == target_cache_path:
-        continue
-    try:
-        with open(fpath) as f:
-            outer = json.load(f)
-        if f"{char_name}.png" in outer.get('key', ''):
-            os.remove(fpath)
-            print(f"  removed stale cache entry: {fpath}")
-    except Exception:
-        pass
-
-target_cache_outer = {'key': cache_key, 'value': json.dumps(card, ensure_ascii=False)}
-with open(target_cache_path, 'w') as f:
-    json.dump(target_cache_outer, f, ensure_ascii=False)
-
-print(f"✓ Patched cache: {target_cache_path}")
-```
-
-**Only touch entries for the patched character** (preserve cache for unrelated characters).
-
-**Step D.5: Delete stale avatar thumbnail** — ST renders the character list (left panel, group chat pickers) từ `data/default-user/thumbnails/avatar/<Char>.png` (~12KB JPEG), NOT from the full PNG. ST's regen-on-mtime check is unreliable across container restarts (empirically: thumbnail survives PNG bitmap change). Defensive cleanup is safe even when only card text changed — ST regenerates on next thumbnail HTTP request.
-
-```python
-import os
-THUMB_PATH = f"/home/haint/Projects/home-server/sillytavern/data/default-user/thumbnails/avatar/{char_name}.png"
-if os.path.exists(THUMB_PATH):
-    os.remove(THUMB_PATH)
-    print(f"✓ Stale thumbnail deleted: {THUMB_PATH}")
-```
-
-**Browser-side cache is separate.** ST serves avatar with default static-file headers; browsers may cache aggressively. Tell the user to hard-refresh (Ctrl+Shift+R) after ST restart — server-side cleanup alone is not enough.
-
-Then restart ST:
-
-```bash
-cd /home/haint/Projects/home-server && ./scripts/up.sh sillytavern
-```
-
-**Note**: If `--adv` is paired with `--expr` or other flags that need ST running (Forge/expression gen), restart is mandatory before those phases. If `--adv` runs alone, restart is still required so user can verify in UI.
+`st_merge_character` needs the container up. When it's down: stop ST first (it holds cards in
+memory and reverts any patch on the next save event), patch **both** the `chara` and `ccv3` tEXt
+chunks (Step A found them; a card can carry either or both), sync the V1 mirror fields onto the V2
+`data.*` copy, then hand-patch the disk cache entry — keyed on
+`data/default-user/characters/<Char>.png-<mtime_ms>`, which changes every time the PNG is rewritten,
+so stale entries for the same character need deleting too — and delete the stale
+`thumbnails/avatar/<Char>.png` so the character list picks up the new bitmap. Full recipe (dual-chunk
+splice, cache-key derivation, thumbnail cleanup, restart) → PROMPT-PLAYBOOK.md gotchas 5.34–5.36.
 
 ### Step E: User verification reminder
 
@@ -410,7 +321,8 @@ Advanced Definition applied. Verify in ST:
   1. Reload ST (Ctrl+Shift+R)
   2. Open {CharName} character card → Advanced Definition tab
   3. Confirm all 5 fields populated, description trimmed
-  4. If anything looks wrong: cp {CharName}.png.bak {CharName}.png
+  4. If anything looks wrong (merge path): re-run Step D with the previous field values
+     (fallback path): cp {CharName}.png.bak {CharName}.png
 ```
 
 ---
@@ -476,9 +388,9 @@ Print audit report:
 ✓ char_prompts[Parasite]: {positive[:60]}...
 ```
 
-### Config-layer audit (always run this)
+### Config-layer audit (always run this, unless `--no-audit`)
 
-The checks above cover the SD knobs. They say nothing about the four layers in [The card is not the only layer](#config-layers), which is where the expensive mistakes live. Run the bundled auditor:
+The checks above cover the SD knobs. They say nothing about the four layers in [The card is not the only layer](#config-layers), which is where the expensive mistakes live. Run the bundled auditor — skip this subsection entirely under `--no-audit` (`/st-cook` runs it once, after every brick in the campaign is dispatched):
 
 ```bash
 python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-config.py --char {CharName}
@@ -769,7 +681,7 @@ After all phases complete, print:
 ✓ char_negative_prompts[{CharName}] = {negative[:40]}...
 ✓ Baseline written: {baseline_path}
 ✓ Settings audit: {N_fixed} corrections made
-[✓ Advanced Definition redistributed: description -{X}% / personality / scenario / mes_example / depth_prompt (PNG patched, .bak saved)]
+[✓ Advanced Definition redistributed: description -{X}% / personality / scenario / mes_example / depth_prompt (merged into live card | fallback: PNG patched, .bak saved)]
 [✓ 28 expressions generated in characters/{CharName}/]
 [✓ World Info lorebook saved: worlds/{CharName}.json]
 
@@ -788,10 +700,11 @@ Next steps:
 - **Forge not running** (--expr): skip expression gen, note for user
 - **Forge timeout per image**: retry once, then skip that emotion + continue
 - **settings.json write fails**: check if container is still running (`podman ps | grep sillytavern`)
-- **PNG patch fails (--adv)**: `.bak` is one `cp` away. Common cause: card uses neither `chara` nor `ccv3` keyword (rare V2 format). Skip Phase 1.5 in that case.
-- **PNG patches silently revert (--adv)** → see Step D: stop ST before patching, restart after.
-- **PNG patched but UI shows old data (--adv)** → see Step D: sync V1 mirror fields with V2 data.
-- **PNG patched + V1 synced but UI STILL shows old data (--adv)** → see Step D cache patch block: patch BOTH PNG and the disk cache `value` field.
+- **`st_merge_character` call fails (--adv)**: check ST is up (`podman ps | grep sillytavern`) and the avatar arg matches the on-disk filename exactly. If ST is genuinely down, drop to the Fallback subsection instead.
+- **Fallback — PNG patch fails**: `.bak` is one `cp` away. Common cause: card uses neither `chara` nor `ccv3` keyword (rare V2 format). Skip Phase 1.5 in that case.
+- **Fallback — PNG patches silently revert**: stop ST before patching, restart after (see Fallback subsection).
+- **Fallback — PNG patched but UI shows old data**: sync V1 mirror fields with the V2 `data.*` copy.
+- **Fallback — PNG patched + V1 synced but UI STILL shows old data**: patch BOTH the PNG and the disk cache `value` field.
 - **LLM over-trims description (--adv)**: user reviews diff in Step C; can pick "Edit before applying" or "Skip Advanced Def".
 - **depth_prompt too aggressive in RP**: bump depth from 2 → 4 manually in card UI to soften LLM attention.
-- **Avatar visual changed but ST UI keeps showing OLD image** → see Step D.5: delete the stale thumbnail, then hard-refresh the browser. Only needed manually if you regenerated the avatar bitmap outside the standard `--adv` flow.
+- **Avatar visual changed but ST UI keeps showing OLD image**: `st_merge_character` invalidates the cache itself; hard-refresh the browser. Manual thumbnail cleanup is only needed on the Fallback path.
