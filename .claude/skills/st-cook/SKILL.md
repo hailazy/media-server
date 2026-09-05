@@ -115,6 +115,8 @@ $SIM build --char <Char> --persona <Name>   # outline: one card constant, Direct
 ```
 Green means: impersonation prompt names the new persona; both persona-lorebook fields equal; `note.default` empty; no Direction over 120 words; no constant at depth ≤ 2; no orphans. A FLAG here is a joint bug — fix it now, in the field the audit names, and re-run once.
 
+Write `$SCRIPTS/<slug>/player-brief.md` from `assets/player-brief.tmpl` (fill its `«…»` slots yourself — `cook.py render` does not touch this file) — the page Hải reads *instead of* the lorebook: fixed givens (home, partner, the cast as she knows them, work, body, calendar, limits), the open slots that are his, and how to cooperate with the narrator. It carries no beats and no destination; that split is the point (see `references/corruption-engine.md` §1 — the player needs her memory, not the plot). Refresh it at every bake.
+
 Write `$SCRIPTS/<slug>/report.md`:
 
 ```
@@ -126,6 +128,7 @@ Write `$SCRIPTS/<slug>/report.md`:
 | voice contract | cook | impersonation_prompt · GG ×3 (+ ch1 register line) |
 | Direction ch1 | cook | worlds/<Name>.json uid N (<n> words) |
 | openers | cook | first_mes + 2 alternates |
+| player brief | template | _scripts/<slug>/player-brief.md — read this, not the lorebook |
 | sim | S1–S8 | <pass>/<total> — <one line per FAIL, if any> |
 | audit | exit <code> | <flags, if any> |
 Play: F5 the ST tab → persona <Name> → <Char> → New chat → swipe the openers.

@@ -6,6 +6,8 @@ Read this before Phase 1 of `/st-cook`. It is the distilled, story-agnostic vers
 
 In prose, dramatic irony runs on a knowledge gap between reader and protagonist. In RP the player *is* the reader and knows everything the protagonist doesn't, so that gap is gone. Rebuild it as a **play gap**: the protagonist makes choices under a false model of what is happening to her, and *those choices are the player's turn content*. She thinks she is doing X; it causes Y. The player writes X and the excuse; the narrator writes Y.
 
+**The gap must not swallow her memory.** The player knows more than she does about the creature — but usually *less* than she does about her own life (who the neighbour is to her, what is usual between them, what her husband's Fridays mean). Played blind, he invents basics mid-scene and fears contradicting a future that is not written; the narrator, holding the lorebook alone, steers against a partner with no map. Two fixes, both mandatory: a **player brief** (givens + open slots, never beats) that he reads instead of the lorebook, and the card's **GIVENS ON ARRIVAL** clause — the first time a person or place enters the page, the narrator folds a line or two of *her* memory of them into the present moment, in her register, never as a dossier or a flashback scene.
+
 Consequence for the setup: every device in the card, lorebook and Direction exists to keep that split alive. When the narrator starts writing her choices, the player has nothing left to do and sends empty turns — that is the failure mode the whole apparatus guards against.
 
 ## 2. The engine — slow self-blame (the "Breaking Bad" shape)
