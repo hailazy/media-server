@@ -1160,7 +1160,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ren = sub.add_parser("render", help="fill templates from a recipe")
     ren.add_argument("--recipe", required=True)
-    ren.add_argument("--only", help="comma-separated subset: card,lore,persona-lorebook,persona,gg,baseline,sim")
+    ren.add_argument("--only", help="comma-separated subset: card,lore,persona-lorebook,persona,gg,baseline,sim,lang")
     ren.add_argument("--out")
     ren.set_defaults(func=cmd_render)
 

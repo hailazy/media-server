@@ -46,7 +46,7 @@
         "en"
       ],
       "default": "vi",
-      "description": "Campaign language (Hải now plays in Vietnamese; default vi). Governs OUTPUT-SHAPING pieces only: char.mes_example, char.first_mes + alternate_greetings/openers, the persona [Voice…] block, impersonation_prompt/promptImpersonate1st, and lorebook trigger keys (recipe.lore.generic[].keys, recipe.lore.specific[].key) are written in this language. The INSTRUCTION layer (system_prompt, post_history_instructions, description, personality, scenario, lore CONTENT, Direction, bible, player-brief.tmpl slots) stays English regardless — except the player brief itself, which is always Vietnamese (it's Hải's own reading document). Set from `--lang` (default vi) at Phase 0/1; st-cook passes `--lang <this value>` when dispatching /st-persona and /st-arc-plan (Playbook 5.51)."
+      "description": "Campaign language (Hải now plays in Vietnamese; default vi). Governs OUTPUT-SHAPING pieces only: char.mes_example, char.first_mes + alternate_greetings/openers, the persona [Voice…] block, impersonation_prompt/promptImpersonate1st, and lorebook trigger keys for recipe.lore.specific[].key are written in this language (the three generic mechanics do NOT read recipe.lore.generic[].keys under 'vi' — cook.py uses each shell's own compound-form key_vi from assets/lore/generic-mechanics.json, since those keys describe the shared corruption engine rather than campaign nouns). The INSTRUCTION layer (system_prompt, post_history_instructions, description, personality, scenario, lore CONTENT, Direction, bible, player-brief.tmpl slots) stays English regardless — except the player brief itself, which is always Vietnamese (it's Hải's own reading document). Set from `--lang` (default vi) at Phase 0/1; st-cook passes `--lang <this value>` when dispatching /st-persona and /st-arc-plan (Playbook 5.51)."
     },
     "idea": {
       "type": "string",
@@ -329,7 +329,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Trigger keys bound into the shell's «KEYS_*» placeholder — used only when language == 'en'. Under 'vi' cook.py ignores this array and takes the shell's fixed key_vi instead, so a Vietnamese campaign can leave the English keys here as documentation of the mechanic."
               }
             }
           }
