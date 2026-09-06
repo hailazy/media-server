@@ -1,8 +1,8 @@
 ---
 name: st-setup
 model: sonnet
-description: "Onboard a SillyTavern character — set SD visual baseline + audit. Optional: redistribute card fields, generate expressions, build lorebook."
-argument-hint: "<CharName> [--adv] [--expr] [--lore] [--all] | --audit"
+description: "Onboard a SillyTavern character — set SD visual baseline + audit. Optional: redistribute card fields, generate expressions, build lorebook. `--lang vi|en` sets the campaign language (default vi) for voice-anchor fields and lorebook keys."
+argument-hint: "<CharName> [--adv] [--expr] [--lore] [--all] [--lang vi|en] | --audit"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character, mcp__st__st_save_worldinfo, mcp__st__st_merge_character
 ---
 
@@ -69,7 +69,7 @@ Run `/home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-conf
 
 Extract from `$ARGUMENTS`:
 - `CharName` = first non-flag token (e.g., `"Parasite"`)
-- Flags: `--adv`, `--expr`, `--lore`, `--all` (enables `--adv` + `--expr` + `--lore`), `--audit`, `--from-recipe <path>`, `--no-audit`
+- Flags: `--adv`, `--expr`, `--lore`, `--all` (enables `--adv` + `--expr` + `--lore`), `--audit`, `--from-recipe <path>`, `--no-audit`, `--lang <vi|en>`
 
 Resolve flags:
 - `adv = '--adv' in args or '--all' in args`
@@ -77,6 +77,7 @@ Resolve flags:
 - `lore = '--lore' in args or '--all' in args`
 - `from_recipe = path following '--from-recipe', else None` — read `recipe.json` there once, up front
 - `no_audit = '--no-audit' in args` — a `/st-cook` campaign runs `audit-config.py` once at the end; running it per-brick here would just repeat the same read
+- `lang` = value following `--lang`, else derived: `from_recipe` → `recipe.language`; else path-read `oai_settings.prompts` for an entry with identifier `lang_vi` — `enabled: true` ⇒ `vi`, else `en`. Default `vi` when nothing resolves.
 
 Validate:
 - If `--audit` only: skip to Phase 2 audit step
@@ -173,7 +174,7 @@ Goal: redistribute bloated `description` content into specialized character card
 | `description` | WHAT char IS | Visual, species/role, backstory, universal mechanics, core nature |
 | `personality` | Demeanor distillation | 5-10 keyword adjectives/phrases |
 | `scenario` | WHERE/WHEN this chat starts | Situational opener (2-3 sentences) |
-| `mes_example` | HOW char speaks | REQUIRED — few-shot voice anchor, 2+ exchanges (embodied dialogue cards benefit from more) |
+| `mes_example` | HOW char speaks | REQUIRED — few-shot voice anchor, 2+ exchanges, written in the campaign language, narrator's third person (embodied dialogue cards benefit from more) |
 | `depth_prompt` | WHAT MUST HOLD per turn | 2-4 imperative behavioral anchors |
 
 **Anti-overlap rule**: Every sentence pulled from description MUST land in exactly one new field. Every sentence kept in description MUST NOT have a more-specific home. No content lives in two places.
@@ -181,8 +182,11 @@ Goal: redistribute bloated `description` content into specialized character card
 **`mes_example` is required on every card, narrator cards included.** A wordless narrator has no
 dialogue of its own to demonstrate, but the field still carries the few-shot voice anchor: 2
 exchanges (a brief `{{user}}` turn → narrator reply demonstrating beats, NPC speech, double
-exposure) written in the target prose voice. On the narrator-card path, fill it via the `/st-cook`
-recipe or by hand at cook time — never merge a card with `mes_example` left empty.
+exposure) written in the target prose voice, in the campaign language (`lang`), narrator's third
+person — the few-shot is the strongest voice anchor the model imitates, and an English anchor under
+a Vietnamese switch is what produced first-person drift. `first_mes` / `alternate_greetings` follow
+the same rule. On the narrator-card path, fill it via the `/st-cook` recipe or by hand at cook time
+— never merge a card with `mes_example` left empty.
 
 ### Step A: Read full card state
 
@@ -402,6 +406,10 @@ The checks above cover the SD knobs. They say nothing about the four layers in [
 python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-config.py --char {CharName}
 ```
 
+When the campaign is `vi`, also run `audit-config.py --only language` — it checks the `lang_vi`
+preset toggle and that voice-anchor fields/keys actually landed in Vietnamese, which the checks
+above don't cover.
+
 Read-only, safe while ST is up, exits non-zero when something is flagged. It reports:
 
 - **sd-prompts** — pose/setting/framing or blanket exclusions baked into a positive; human-anatomy suppression in a negative; orphan entries left behind by deleted cards
@@ -583,8 +591,15 @@ Where `CHAR_BASELINE` = the char_prompts_positive value from Phase 1.
 
 For each entry produce:
 - `comment`: short title (e.g., "Parasite — What it is")
-- `key`: 2-4 trigger keywords (what would make this entry relevant mid-RP)
-- `content`: 1-3 sentences injected into the prompt when triggered. Factual, lore-style.
+- `key`: 2-4 trigger keywords (what would make this entry relevant mid-RP), written in the campaign
+  language (`lang`) — the model writes no other language there, so a mismatched key never fires. For
+  `vi`: ST whole-word matching is `(?:^|\W)key(?:$|\W)` and Vietnamese words are space-separated
+  syllables, so a bare monosyllable fires inside other words (*bò* in *bò sát*, *cá* in *cá nhân*,
+  *mực* = ink). Use compound forms (*con bò, con rắn, mực ống, hồ bơi*) and drop English keys —
+  proper nouns and Japanese loanwords (sento, tatami, matsuri) are fine as-is.
+- `content`: 1-3 sentences injected into the prompt when triggered. Factual, lore-style. For `vi`
+  cast entries, add a "Xưng hô (tiếng Việt)" line fixing the address pair (e.g. "Rika gọi Mizuko là
+  *em*, xưng *chị*; narration: Rika / chị.") — pins the form once instead of letting it drift per turn.
 
 ### Position & Depth strategy
 
@@ -683,6 +698,7 @@ After all phases complete, print:
 ```
 === ST Setup Complete: {CharName} ===
 
+language: {vi|en}
 ✓ char_prompts[{CharName}] = {positive[:60]}...
 ✓ char_negative_prompts[{CharName}] = {negative[:40]}...
 ✓ Baseline written: {baseline_path}
@@ -714,3 +730,4 @@ Next steps:
 - **LLM over-trims description (--adv)**: user reviews diff in Step C; can pick "Edit before applying" or "Skip Advanced Def".
 - **depth_prompt too aggressive in RP**: bump depth from 2 → 4 manually in card UI to soften LLM attention.
 - **Avatar visual changed but ST UI keeps showing OLD image**: `st_merge_character` invalidates the cache itself; hard-refresh the browser. Manual thumbnail cleanup is only needed on the Fallback path.
+- **`mes_example`/lorebook keys read in the wrong language after a `--lang` switch**: regenerate them from Phase 1.5 / Phase 4 in the new language — a stale English anchor under `vi` is what produces first-person drift.

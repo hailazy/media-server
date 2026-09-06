@@ -47,6 +47,8 @@ Validate:
 
 ## Phase 1: Gather Context
 
+**Language**: recent chat messages may be Vietnamese (campaign language vi) — read the scene the same way regardless of language. If the raw message carries an `<illust>` marker line (gotcha 5.50), treat it as the narrator's own tag proposal: you may reuse its tags, but re-verify them in Phase 2.5 like any other tag.
+
 **Step 0 — Ensure tag DB cache:**
 
 ```python
@@ -201,6 +203,8 @@ Use `Read` tool to load:
 ## Phase 2: Generate Prompt (LLM task)
 
 You (Claude) have all context. Now produce a NoobAI XL-compatible booru-tag prompt.
+
+**Language**: output is ALWAYS English booru tags, even from a Vietnamese scene — Danbooru vocabulary is English, so a Vietnamese token in the tag line is a wasted token for NoobAI. Identity still comes from the baseline file (Phase 1 Step 3), never derived from the Vietnamese prose itself.
 
 ### Formatting & order
 
@@ -400,6 +404,7 @@ NOTE: ST sẽ auto-prepend prompt_prefix + character_prompts[{CharName}] (positi
 | LLM hallucinates >5 tags | Show all in `Removed` section, suggest user override với `--describe` |
 | Persona not set | Skip persona identity injection, output scene-only prompt |
 | `--describe` rỗng | Same as no `--describe` flag |
+| Vietnamese scene with a mixed-language `<illust>` line | Drop the Vietnamese tokens, keep the English ones |
 
 ---
 

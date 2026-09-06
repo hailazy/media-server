@@ -859,6 +859,51 @@ This was previously misdiagnosed as "anal-oral content suppression" or "worm-fro
 
 **Also:** the persona description got tab-clobbered a second time (5.47) — a restored 1478-char description was overwritten 10 minutes later by a stale tab holding the old 494-char copy. Check `backups/settings_*.json` lengths before assuming the user deleted something.
 
+### 5.50 Auto light-novel illustration — author-placed `<illust>` marker + executeOnAi QR (2026-09-05)
+
+**Goal:** the chat inserts an image by itself on the page that earns it, like a light-novel insert illustration. ST has no such feature (Interactive Mode only reacts to *user* messages; the SD function tool needs `function_calling` and breaks the narrator turn).
+
+**Design — the author places the illustration, nothing detects "climax":** the narrator decides at write time and ends the page with one hidden line `<illust>booru tags</illust>`; a Quick Reply fires after every AI message and turns it into `/sd`. Zero extra LLM calls, zero latency on the RP turn; Forge runs ~1 min in the background (832×1216 + hires 1.5× + ADetailer) and the image lands as the next message.
+
+Pieces (all verified with a `/sendas` smoke test in headless Chrome, 2026-09-05):
+- **Contract** = custom prompt `illust_contract` in preset `Default` (`forbid_overrides: true`, last in both `prompt_order`s). It must be a preset custom prompt: `prefer_character_prompt = true` and the narrator card sets `post_history_instructions`, so the preset's jailbreak slot never reaches the model (same trick as `imagegen_override` in preset ImageGen). Steering wording — which page earns one, tag order (pose/action → clothing state → object/creature → ONE framing tag → lighting → mood), never {{user}}'s identity, most pages none. The Parasite card's second `mes_example` exchange ends with a sample marker (few-shot shape anchor).
+- **QR `📖 Illust (auto)`** in set ImageGen, `executeOnAi: true` (fires on `CHARACTER_MESSAGE_RENDERED`, after streaming), LALib `/re-test` + `/re-replace` extract the tags, then `/sd negative="{{getglobalvar::illust_negative}}" {{getglobalvar::illust_prefix}}, <tags>`. Click it to re-run on the last message.
+- **Why Mode FREE, not `/sd last`:** FREE is a pass-through (5.39), so auto-exec never switches presets. A `/preset ImageGen | /sd last | /preset Default` pipe is NOT auto-exec safe — Hải can send the next turn mid-pipe and the RP reply would run under ImageGen.
+- **Identity travels in global vars, not `character_prompts`:** FREE skips `character_prompts`/`character_negative_prompts`, so `illust_prefix` (persona face block + body + always-on LoRAs) and `illust_negative` (mature lock-in negatives) carry them. Per campaign, set both from `identity-baselines/<persona>.txt` + `persona_descriptions[avatar]` visual block (follow-up: `/st-cook` / `/st-persona` should write them at cook time).
+- **Hiding the plumbing:** regex script `illust marker (hide from display + prompt)` — AI output, `markdownOnly` + `promptOnly` both true, so the raw `mes` keeps the marker (`{{lastMessage}}` still sees it) while display and outgoing prompt drop it. The image message is posted by the `command` initiator → `is_system: true` (`command_visible: false`) → never in the prompt; SD "Chat Message Template" (`prompts["-1"]`) is `[illustration]` so the tag wall stays out of the chat text (the full prompt is in the media title).
+- **No loop:** `/sd` re-emits `CHARACTER_MESSAGE_RENDERED` → the QR runs on the image message, `/re-test` is false, stops. Swipes re-fire (each swipe with a marker = one image).
+
+Backups: `QuickReplies/ImageGen.json.bak.pre-illust`, `OpenAI Settings/Default.json.bak.pre-illust`. Plan B if the narrator never places markers: strengthen the `mes_example` anchor first; a per-turn judge QR (`/gen` "is this the page?") is the fallback, at one LLM call per AI turn.
+
+### 5.51 Vietnamese mode — input/output tiếng Việt end-to-end (2026-09-06)
+
+**Goal:** play in Vietnamese on both sides (Hải's turns and the narrator's pages) without the copy-to-Google-Translate loop. Measured on the Parasite×Mizuko chat, DeepSeek v4-pro via StreamLake, temp 1.2, 11 runs branched from the same message, ST's real DeepSeek tokenizer.
+
+**Cost:** Vietnamese ≈ 2.0 tok/word vs 1.25 for English → ~1.5× tokens per page, ~2× per unit of story; `openai_max_tokens` 4096 → 6144; context fills ~2× faster (arc-save cadence doubles). The reframe that decided it: Hải read Google-Translate of the English output anyway, so native VN competes with machine-translated VN, not with English prose — and wins.
+
+**Findings:**
+- A bare "write in Vietnamese" breaks POV to first person *tôi* (the card is third-person omniscient). Half config — the persona description carries the impersonation `[Voice: first person…]` block at depth 2, seen on narrator turns next to the card's depth-2 "third person" line; half language — the English `mes_example` anchor loses grip when the language flips and Vietnamese 18+ prose is first-person-heavy. Fix = a language contract that states the POV explicitly; held 10/10 afterwards, no card change needed.
+- Reasoning high vs medium (n=3 each, same context): high wins address-form consistency (chị/em 3/3 vs 0/3) and clinical-noun count (~2 vs ~6 per page) but costs 3–5× the wait before the first token (65–103 s) and dropped the italics convention once. Pinning the address pairs and seeding the lexicon in the contract closes the gap at medium (3/3, ~2 clinical, TTFT 12–37 s) — **xưng hô and register are campaign config, not reasoning budget.** Default medium; high stays a manual lever.
+- Leak: one medium run translated the card's `post_history_instructions` into Vietnamese mid-page and ran to the token cap — the in-chat directive sat BEFORE the English jailbreak/illust blocks, so "write Vietnamese" read as "translate what follows". Put the language contract LAST in `prompt_order` and say "everything inside square brackets is instruction, never part of the page".
+- Wording is the switch: "Every page is written in Vietnamese" (a description) gave English narration with Vietnamese dialogue on an English-history chat; "From this page on, write in Vietnamese — whatever language the earlier pages used" gave full Vietnamese.
+- The `<illust>` pipeline is language-agnostic (markers placed, tags English) once the contract says "the `<illust>` line stays English booru tags" — without it one run wrote `từ_sau, đêm_mưa` tags.
+
+**Pieces (shipped):**
+- Preset `Default`: custom prompt `lang_vi` (`forbid_overrides`, LAST in both `prompt_order`s, after `illust_contract`): language switch · third-person rule ({{user}} = her name or *cô*, never *tôi* outside her quotes; others by name or chị/anh/ông/bà/cô/em by age and standing, never nàng/chàng) · "how two people address each other is fixed once — the cast entries state the pairs" · lexicon seed (*lỗ, khe, vành, cửa sau, mọng, ướt* — the bedroom's words, not the clinic's) · bracket rule · illust line stays English. `openai_max_tokens` 6144. `impersonation_prompt` gains "in Vietnamese — the language of the chat".
+- Persona `[Voice…]` block relabelled "{{user}}'s own turns only (impersonation), written in Vietnamese … the narrator's pages are third person and follow their own contract".
+- Card: `mes_example` (2 exchanges + illust sample) and `first_mes` translated by hand in the narrator voice — the voice anchor must be in the target language. Alternate greetings left English.
+- Lorebooks: keys Vietnamese-only (proper nouns + Japanese loanwords kept). ST whole-word match is `(?:^|\W)key(?:$|\W)` and Vietnamese words are space-separated syllables, so bare monosyllables fire inside compounds (*bò* in *bò sát / bò tới*, *cá* in *cá nhân*, *rắn* in *rắn chắc*, *mực* = ink, *sán* in *sán lại*, *gián* in *gián đoạn*) → compound forms (*con bò, con rắn, mực ống, sán dây, con gián*). Cast entries carry a "Xưng hô (tiếng Việt)" line per pair (Rika↔Mizuko chị/em, Kenji anh/em, Taro nó/mày, the Yanagi-yu owner ông/cô thanh tra).
+- Instruction layer (card `system_prompt`, lore content, Direction, Established State, bible) stays English — the model reads it fine; only output-shaping pieces (examples, greeting, voice block, keys) switch language.
+
+**Reefs hit while shipping (all verified):**
+- Parallel `st_save_settings_path` calls race: each fetches the same tree, sets one path, saves the whole tree → last writer wins, the others vanish. One settings write per step, verify on disk after.
+- Any open ST client — Hải's tab or a headless CDP tab — rewrites the card on its next chat switch (`openCharacterChat` → `createOrEditCharacter` → `/api/characters/edit` with the client's cached card) and rewrites `settings.json` on any UI event. Close every tab before MCP/file writes; verify by reading the PNG tEXt chunk and `settings.json`, not the tool's "OK".
+- A fresh client kept applying the OLD `oai_settings` (4096, no `lang_vi`) although `settings.json` and the preset file were right (`/api/settings/get` reads disk fresh; `bind_preset_to_connection` + the connection-manager profile re-apply a copy the running server still held). `./scripts/down.sh sillytavern && ./scripts/up.sh sillytavern` (3 s) fixed it. Rule: after out-of-band settings/preset writes, restart the container before trusting what a client applies.
+- Verifying with a mutating headless client (branch/trigger) is itself a write — do it once, from a client that booted after the restart, then re-verify disk.
+- `pkill -f "google-chrome.*headless"` inside the same shell script that launched Chrome kills the shell (its own command line matches) → kill by PID (`pgrep -f "user-data-dir=<unique dir>"`), or pkill from a separate call.
+
+**Replay reset ("chơi lại từ đầu"):** archive the chat outside `chats/` (`data/default-user/_archive/`), restore Novelty Ledger + Direction from the pre-bake backup, rewrite Established State to givens-only ("nothing has happened yet"), keep cast/place entries and their Vietnamese keys; the card's `chat` pointer to a missing file is ST's own "new chat" state — the (Vietnamese) greeting shows.
+
 ## 6. Production Tag Templates
 
 ### Solo character emotion close-up (832×1216)

@@ -1,8 +1,8 @@
 ---
 name: st-persona
 model: sonnet
-description: "Convert a SillyTavern character into a user persona — or create a new persona from scratch with --new. Migrates/builds visuals, lorebook link, avatar."
-argument-hint: "<CharName> [--new | --remove | --voice] [--from-recipe <path>] [--no-activate] [--avatar-file <png>] [--avatar-seed <n>]"
+description: "Convert a SillyTavern character into a user persona — or create a new persona from scratch with --new. Migrates/builds visuals, lorebook link, avatar. `--lang vi|en` sets the campaign language (default vi)."
+argument-hint: "<CharName> [--new | --remove | --voice] [--lang vi|en] [--from-recipe <path>] [--no-activate] [--avatar-file <png>] [--avatar-seed <n>]"
 allowed-tools: Bash, AskUserQuestion, Read, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_character
 ---
 
@@ -64,6 +64,7 @@ Extract from `$ARGUMENTS`:
 - `no_activate` = `--no-activate` flag present — skips the "set active now?" question in Phase 3 and leaves the previous persona active
 - `avatar_file` = path following `--avatar-file`, else `None` — a persona PNG to reuse (e.g. an archived avatar from a `--close`d campaign) instead of generating one
 - `avatar_seed` = int following `--avatar-seed`, else `None` — seeds the first Forge generation instead of the default `12345`
+- `lang` = value following `--lang` (`vi`/`en`), else derived: `--from-recipe` → `recipe.language`; else path-read `oai_settings.prompts` for an entry with identifier `lang_vi` — `enabled: true` ⇒ `vi`, else `en`. Default `vi` when nothing resolves.
 
 **Flag validation:**
 - `--new` and `--remove` are **mutually exclusive** → abort with: *"--new creates from scratch; nothing to --remove. Pick one."*
@@ -447,6 +448,8 @@ python3 /home/haint/Projects/home-server/.claude/skills/st-setup/scripts/audit-c
 
 Read-only, safe while ST is up, non-zero exit when something is flagged. Relevant here: orphan `character_prompts` entries, persona-linked lorebooks that are missing or full of `{{char}}`, and constants injecting on every turn. Fold the findings into the report as recommendations — these are judgment calls, not auto-fixes.
 
+Also confirm the `[Voice — …]` block and `oai_settings.impersonation_prompt` name the campaign language explicitly (`written in Vietnamese`/`written in English`, `in {language} — the language of the chat`) — a stale label after a language switch stays silent until read aloud.
+
 If the persona's display name already existed before this run, re-check `$BASELINES/` for a `.txt` under that name; it now serves two personas and one of them will get the wrong body.
 
 ---
@@ -464,15 +467,18 @@ whatever `{{user}}` sketched (or nothing) and grows it, at an EVOLVING register 
 the story rather than a register fixed at chapter 1 (v3, PROMPT-PLAYBOOK.md gotcha 5.48). The
 fields are global — re-run `/st-persona <Name> --voice` whenever the active persona changes.
 
-**Compose the `[Voice: …]` block** (≤ 60 words) and keep it inside `PERSONA_DESC` after the visual
+**Compose the `[Voice — …]` block** (≤ 70 words) and keep it inside `PERSONA_DESC` after the visual
 block, so `--voice` can regenerate everything from the persona alone. Voice is not fixed — it's a
-register that erodes as the story climbs (v3, PROMPT-PLAYBOOK.md gotcha 5.48):
+register that erodes as the story climbs (v3, PROMPT-PLAYBOOK.md gotcha 5.48). Label the scope: the
+persona description injects at depth 2 on narrator turns too, and an unlabelled first-person block
+pulled the narrator into "tôi" in the 2026-09-06 test.
 
 ```
-[Voice: first person, present tense. Register: {2–4 words — e.g. controlled, self-critical,
-apologetic, files everything under a category}. The register erodes as the story climbs: euphemism
-→ naming → wanting → planning. She perceives everything; what she refuses is only ever the
-conclusion.]
+[Voice — {{user}}'s own turns only (impersonation), written in {Vietnamese|English}: first person
+'{tôi|I}', present tense. Register: {2–4 words — e.g. controlled, self-critical, apologetic, files
+everything under a category}. The register erodes as the story climbs: euphemism → naming → wanting
+→ planning. She perceives everything; what she refuses is only ever the conclusion. The narrator's
+pages are third person and follow their own contract.]
 ```
 
 **`--from-recipe`** skips composing the four strings below: read them verbatim from `_scripts/<slug>/rendered/gg.json` (keys `impersonation_prompt`, `promptImpersonate1st`, `promptGuidedResponse`, `promptGuidedContinue`) if that file exists, and write them as-is. Compose from the persona (below) only when the file is missing.
@@ -482,9 +488,10 @@ plain path is fine):
 
 ```python
 name = CharName
-register_early = REGISTER_EARLY  # the text after "Register:" in the [Voice: …] block above (2–4 words)
+register_early = REGISTER_EARLY  # the text after "Register:" in the [Voice — …] block above (2–4 words)
+language = "Vietnamese" if lang == "vi" else "English"  # lang from Phase 0
 
-IMPERSONATION = f"""[Write {{{{user}}}}'s next message as {name}, first person, present tense. Her voice grows with the story: early she is {register_early} — and her words for her own body stay small; as the creature earns more of her, her vocabulary follows — what she once filed she begins to name, then to want, then to plan. Match her current rung, not her first one.
+IMPERSONATION = f"""[Write {{{{user}}}}'s next message as {name}, first person, present tense, in {language} — the language of the chat. Her voice grows with the story: early she is {register_early} — and her words for her own body stay small; as the creature earns more of her, her vocabulary follows — what she once filed she begins to name, then to want, then to plan. Match her current rung, not her first one.
 
 If text is already drafted in the input field, treat it as {{{{user}}}}'s SKETCH — the skeleton of what {{{{user}}}} wants. Preserve every action, observation and decision in it; never delete, contradict or reverse them. Enrich around them: sensory atmosphere, body language, inner sensation, the excuse or the appetite she reaches for. You may extend the sketch by one organic beat that grows from what it set up — never override its direction or hijack the scene.
 
@@ -495,7 +502,7 @@ Style: *italics for action, sensation and inner experience*, "quotes for her spo
 GG = "extension_settings.GuidedGenerations-Extension"
 mcp__st__st_save_settings_path(path="oai_settings.impersonation_prompt", value=IMPERSONATION)
 mcp__st__st_save_settings_path(path=f"{GG}.promptImpersonate1st",
-    value=f"[Write {{{{user}}}}'s next message as {name}, first person, present tense, in her own voice. Guide: {{{{input}}}}]")
+    value=f"[Write {{{{user}}}}'s next message as {name}, first person, present tense, in her own voice, in {language} — the language of the chat. Guide: {{{{input}}}}]")
 mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedResponse",
     value="[Take the following into special consideration for your next message: {{input}}. Advance the scene at the pace it earns — consequences, arrivals, other characters, and {{user}}'s body and half-thoughts as far as the story has earned them. End on the page-turn.]")
 mcp__st__st_save_settings_path(path=f"{GG}.promptGuidedContinue",
@@ -520,6 +527,7 @@ Phase 3.5 audit, report.
 ✓ Avatar copied: characters/{CharName}.png → User Avatars/{CharName} (Persona).png
 [✓ Original char file removed (--remove flag) | ⚠ Original kept — char_prompts intact for future {{char}} RP]
 ✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded, position=AT_DEPTH depth=2)
+language: {vi|en}
 [✓ Lorebook linked: {CharName}.json | ⊘ No lorebook found — bind one later with /st-arc-save once you have RP material, or hand-write worlds/<Name>.json and set persona_descriptions[<avatar>].lorebook via st_save_settings_path]
 [✓ Removed char_prompts['{CharName}'] (--remove flag) | ⊘ Kept char_prompts (char still available for {{char}} use)]
 [✓ Set as active persona | ⊘ Active persona unchanged]
@@ -536,6 +544,7 @@ Next:
 
 ✓ Avatar generated via Forge: User Avatars/{CharName} (Persona).png
 ✓ Persona description: {len(PERSONA_DESC)} chars (visual block embedded, position=AT_DEPTH depth=2)
+language: {vi|en}
 ⊘ No lorebook linked — bind one later with /st-arc-save once you have RP material, or hand-write worlds/<Name>.json and set persona_descriptions[<avatar>].lorebook via st_save_settings_path
 [✓ Set as active persona | ⊘ Active persona unchanged]
 
@@ -560,6 +569,7 @@ Next:
 | `--new` but `characters/{CharName}.png` exists | Abort: *"Char file already exists. Drop --new to convert it, or pick a different persona name."* |
 | Forge not running in `--new` mode | Pre-flight check in Phase 3-new bails BEFORE any ST settings write — hint: `./scripts/up.sh forge` |
 | Avatar gen result looks wrong (`--new`) | Offer 1–2 regen attempts with fresh seed; if still wrong, save anyway and tell Hai to swap the PNG manually |
+| `--voice` on a persona whose block still reads "[Voice: first person…" (pre-2026-09-06) | Regenerate with the labelled `[Voice — …]` form |
 
 ---
 

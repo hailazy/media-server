@@ -20,6 +20,7 @@ Usage:
     audit-config.py                 # everything
     audit-config.py --char Parasite # scope to one character
     audit-config.py --json          # machine-readable
+    audit-config.py --only language # Vietnamese-mode checks only (Playbook 5.51)
 """
 from __future__ import annotations
 
@@ -198,9 +199,11 @@ def audit_precedence(s: dict, only: str | None) -> None:
         if not chunks:
             add(WARN, "card", png.stem, "no chara/ccv3 chunk found")
             continue
-        if len({json.dumps(c, sort_keys=True) for c in chunks}) > 1:
+        # ST writes a V2 `chara` and a V3 `ccv3` chunk from the same object — they
+        # differ in spec/spec_version by design, so compare the card DATA only.
+        if len({json.dumps(c.get("data", c), sort_keys=True) for c in chunks}) > 1:
             add(FLAG, "card", png.stem,
-                "chara and ccv3 chunks DISAGREE — ST reads ccv3, so the other is stale",
+                "chara and ccv3 chunks DISAGREE on card data — ST reads ccv3, so the other is stale",
                 "patch every card-bearing chunk with identical content")
         d = chunks[0].get("data", chunks[0])
         if d.get("character_book"):
@@ -355,10 +358,128 @@ def audit_orphans(s: dict) -> None:
             add(WARN, "orphans", txt.stem, "identity baseline has no owner")
 
 
+# ───────────────────────── layer 7: campaign language (vi) ─────────────────────────
+VI_DIACRITICS = re.compile(r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", re.I)
+# Bare Vietnamese monosyllables that fire inside other words under ST's whole-word
+# regex (?:^|\W)key(?:$|\W): bò→bò sát / bò tới, cá→cá nhân, rắn→rắn chắc, mực = ink,
+# sán→sán lại, gián→gián đoạn. Compound forms (con bò, mực ống, sán dây) are safe.
+VI_BARE_KEYS = {"bò", "cá", "rắn", "mực", "sán", "gián", "ong", "bọ", "dê", "ốc", "sên", "ếch", "cóc"}
+
+
+def audit_language(s: dict, only: str | None) -> None:
+    """Vietnamese mode (Playbook 5.51) is one preset prompt plus anchors that must
+    agree with it: the switch without Vietnamese anchors drifts the narrator into
+    first person and English narration; Vietnamese anchors without the switch leave
+    the model guessing. Keys that never fire are invisible until the lore goes dark."""
+    oai = s.get("oai_settings") or {}
+    prompts = oai.get("prompts") or []
+    lv = next((p for p in prompts if p.get("identifier") == "lang_vi"), None)
+    if lv is None:
+        add(WARN, "language", "oai_settings.prompts",
+            "no `lang_vi` custom prompt — Vietnamese mode is not installed",
+            "Playbook 5.51: add the switch prompt LAST in both prompt_orders")
+        return
+    vi = bool(lv.get("enabled"))
+
+    for blk in oai.get("prompt_order") or []:
+        order = blk.get("order") or []
+        ids = [it.get("identifier") for it in order]
+        ent = next((it for it in order if it.get("identifier") == "lang_vi"), None)
+        cid = blk.get("character_id")
+        if ent is None:
+            add(FLAG, "language", f"prompt_order[{cid}]",
+                "`lang_vi` missing from this order — the prompt never reaches the model",
+                "append {identifier: lang_vi, enabled: true} after illust_contract")
+            continue
+        if bool(ent.get("enabled")) != vi:
+            add(FLAG, "language", f"prompt_order[{cid}]",
+                "`lang_vi` enabled=%s here but %s in oai_settings.prompts — ST honours the order entry"
+                % (ent.get("enabled"), vi), "flip both together")
+        if vi and ids and ids[-1] != "lang_vi":
+            add(FLAG, "language", f"prompt_order[{cid}]",
+                "`lang_vi` is not LAST (last = %s) — an English instruction block after the switch "
+                "reads as 'translate what follows' (one run translated post_history into the page)" % ids[-1],
+                "move lang_vi to the end of the order")
+
+    if vi and (oai.get("openai_max_tokens") or 0) < 6144:
+        add(WARN, "language", "oai_settings.openai_max_tokens",
+            "%s < 6144 — Vietnamese ≈ 2 tok/word, a page hits the cap ~1.5× sooner" % oai.get("openai_max_tokens"),
+            "st_save_settings_path('oai_settings.openai_max_tokens', 6144)")
+    imp = oai.get("impersonation_prompt") or ""
+    if vi and "vietnamese" not in imp.lower():
+        add(FLAG, "language", "oai_settings.impersonation_prompt",
+            "does not name Vietnamese — Guided Impersonate writes Hải's turns in English",
+            "run /st-persona <Name> --voice --lang vi")
+
+    pu = s.get("power_user", {})
+    avatar = s.get("user_avatar", "")
+    desc = ((pu.get("persona_descriptions") or {}).get(avatar) or {}).get("description") or ""
+    m = re.search(r"\[Voice[^\]]*\]", desc, re.S)
+    block = m.group(0) if m else ""
+    if block and "own turns only" not in block:
+        add(WARN, "language", f"persona:{avatar}",
+            "[Voice…] block is not labelled \"{{user}}'s own turns only\" — it injects at depth 2 on "
+            "narrator turns too and pulled the narrator into first person (2026-09-06)",
+            "run /st-persona <Name> --voice")
+    if vi and block and "vietnamese" not in block.lower():
+        add(FLAG, "language", f"persona:{avatar}", "[Voice…] block does not name Vietnamese",
+            "run /st-persona <Name> --voice --lang vi")
+
+    active = s.get("active_character") or ""
+    png = (ST_DATA / "characters" / active) if active else None
+    card = {}
+    if png and png.exists() and (not only or png.stem == only):
+        chunks = card_chunks(png)
+        card = chunks[0].get("data", chunks[0]) if chunks else {}
+        for field in ("mes_example", "first_mes"):
+            txt = card.get(field) or ""
+            has_vi = bool(VI_DIACRITICS.search(txt))
+            if vi and txt and not has_vi:
+                add(FLAG, "language", f"{png.stem}:{field}",
+                    "English while lang_vi is on — the anchor the model imitates contradicts the switch "
+                    "(POV drift, English narration)",
+                    "translate %s in the narrator's third-person voice (Playbook 5.51)" % field)
+            if not vi and has_vi:
+                add(WARN, "language", f"{png.stem}:{field}", "Vietnamese while lang_vi is off — mismatch",
+                    "enable lang_vi (prompt + both order entries) or restore the English anchor")
+
+    books: set[str] = set()
+    if pu.get("persona_description_lorebook"):
+        books.add(pu["persona_description_lorebook"])
+    w = ((card.get("extensions") or {}).get("world")) if card else None
+    if w:
+        books.add(w)
+    for world in sorted(books):
+        path = ST_DATA / "worlds" / f"{world}.json"
+        if not path.exists():
+            continue
+        entries = json.loads(path.read_text(encoding="utf-8")).get("entries", {})
+        for e in entries.values():
+            if e.get("constant") or e.get("disable"):
+                continue
+            keys = [k for k in (e.get("key") or []) if isinstance(k, str) and k.strip()]
+            if not keys:
+                continue
+            label = f"{world}:{(e.get('comment') or '?')[:40]}"
+            proper_noun_only = all(k[:1].isupper() or not k[:1].isalpha() for k in keys)
+            if vi and not proper_noun_only and not any(VI_DIACRITICS.search(k) for k in keys):
+                add(FLAG, "language", label,
+                    "no Vietnamese key on a keyed entry — it never fires in a Vietnamese chat",
+                    "add compound-form Vietnamese keys; keep proper nouns and loanwords")
+            bare = [k for k in keys if k.strip().lower() in VI_BARE_KEYS]
+            if bare:
+                add(WARN, "language", label,
+                    "bare monosyllabic keys %s fire inside other words (whole-word regex splits "
+                    "Vietnamese syllables on \\W)" % bare,
+                    "use compound forms: con bò, con rắn, mực ống, sán dây, con gián")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--char", help="scope to one character name (no .png)")
     ap.add_argument("--json", action="store_true", dest="as_json")
+    ap.add_argument("--only", choices=["sd-prompts", "precedence", "lorebook", "voice", "note", "orphans", "language"],
+                    help="run a single audit area (e.g. --only language after a /st-cook)")
     a = ap.parse_args()
 
     if not (ST_DATA / "settings.json").exists():
@@ -366,12 +487,18 @@ def main() -> int:
         return 2
 
     s = load_settings()
-    audit_sd_prompts(s, a.char)
-    audit_precedence(s, a.char)
-    audit_lorebooks(s, a.char)
-    audit_voice(s)
-    audit_note(s)
-    audit_orphans(s)
+    areas = {
+        "sd-prompts": lambda: audit_sd_prompts(s, a.char),
+        "precedence": lambda: audit_precedence(s, a.char),
+        "lorebook": lambda: audit_lorebooks(s, a.char),
+        "voice": lambda: audit_voice(s),
+        "note": lambda: audit_note(s),
+        "orphans": lambda: audit_orphans(s),
+        "language": lambda: audit_language(s, a.char),
+    }
+    for name, fn in areas.items():
+        if a.only is None or a.only == name:
+            fn()
 
     if a.as_json:
         print(json.dumps(findings, ensure_ascii=False, indent=2))
@@ -383,7 +510,7 @@ def main() -> int:
         print("No config-layer problems found.")
         return 0
     for area in ["sd-prompts", "sd-style", "precedence", "card", "lorebook", "voice",
-                 "steering", "note", "orphans"]:
+                 "steering", "note", "orphans", "language"]:
         rows = [f for f in findings if f["area"] == area]
         if not rows:
             continue

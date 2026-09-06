@@ -52,6 +52,12 @@ BACKUPS_DIR = ST_DATA / "backups"
 PLACEHOLDER_RE = re.compile(r"«([A-Z0-9_]+)»")
 QUOTED_PLACEHOLDER_RE = re.compile(r'"«([A-Z0-9_]+)»"')
 WORD_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)  # same regex as audit-config.py
+# Vietnamese mode (PROMPT-PLAYBOOK 5.51): the anchors the model imitates must be in the
+# campaign language, and trigger keys must be compound forms — ST's whole-word match
+# (?:^|\W)key(?:$|\W) treats Vietnamese syllable boundaries as \W, so a bare monosyllable
+# fires inside other words (bò→bò sát, cá→cá nhân, rắn→rắn chắc, mực = ink, gián→gián đoạn).
+VI_DIACRITICS = re.compile(r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", re.I)
+VI_BARE_KEYS = {"bò", "cá", "rắn", "mực", "sán", "gián", "ong", "bọ", "dê", "ốc", "sên", "ếch", "cóc"}
 
 
 class CookError(Exception):
@@ -375,10 +381,22 @@ def build_bindings(recipe: dict, schema: dict) -> dict:
     bindings = dict(schema.get("x-defaults", {}))
     bindings = {k: v for k, v in bindings.items() if not k.startswith("_")}
 
+    language = recipe.get("language", "vi")
+    language_name = "Vietnamese" if language == "vi" else "English"
     persona = recipe.get("persona", {})
     voice = persona.get("voice", {})
     derived = {
         "SLUG": recipe.get("slug"),
+        # LANGUAGE / LANGUAGE_NAME are aliases for the same human-readable value
+        # ("Vietnamese"/"English") — assets/persona/voice-block.tmpl and
+        # assets/gg/prompts.json both read «LANGUAGE»; keep LANGUAGE_NAME too so
+        # anything (docs, a future template) written against the other name still
+        # resolves. FIRST_PERSON is the literal first-person pronoun the persona's
+        # own (impersonation) turns should use — never the narrator's third-person
+        # pages, which stay «PERSONA_NAME»/cô/chị/etc per the Vietnamese key rule.
+        "LANGUAGE": language_name,
+        "LANGUAGE_NAME": language_name,
+        "FIRST_PERSON": "tôi" if language == "vi" else "I",
         "NAME": persona.get("name"),
         "PERSONA_NAME": persona.get("name"),
         "AGE": persona.get("age"),
@@ -467,6 +485,7 @@ def cmd_render(args):
 
     char = recipe.get("char", {})
     kind = char.get("kind", "narrator")
+    language = recipe.get("language", "vi")
 
     # ---- card fields ----
     if want("card"):
@@ -516,6 +535,17 @@ def cmd_render(args):
                 "card-fields: mes_example must not be empty — every cooked card needs a "
                 "2-exchange few-shot voice anchor (recipe.char.mes_example)"
             )
+        # In a Vietnamese campaign the anchors MUST be Vietnamese: an English few-shot
+        # under the lang_vi switch is exactly what drifted the narrator into first
+        # person and English narration on 2026-09-06 (Playbook 5.51).
+        if language == "vi":
+            for field in ("mes_example", "first_mes"):
+                txt = char.get(field, "") or ""
+                if txt.strip() and not VI_DIACRITICS.search(txt):
+                    raise AssertionFailed(
+                        f"card-fields: recipe.language is 'vi' but char.{field} has no Vietnamese "
+                        "diacritics — write the anchor in Vietnamese (narrator third person) or set language 'en'"
+                    )
 
         create_schema = load_json(ASSETS / "card/create-body.schema.json")
         allowed_keys = set(create_schema["properties"].keys())
@@ -558,11 +588,20 @@ def cmd_render(args):
         for shell in generic_shells:
             rendered_comment = render_template_text(shell["comment"], bindings)
             rendered_content = render_template_text(shell["content"], bindings)
-            key_val = shell["key"]
-            if isinstance(key_val, str):
-                # array placeholder on its own — render via the whole-field path
-                key_val = json.loads(render_template_text(f'"{key_val}"', bindings)) \
-                    if key_val.startswith("«") else render_template_text(key_val, bindings)
+            # Vietnamese campaigns use the shell's own key_vi (compound-form, fixed
+            # vocabulary for the generic mechanic) instead of the English key
+            # placeholder bound from recipe.lore.generic[].keys — see the Vietnamese
+            # key rule (PROMPT-PLAYBOOK 5.51): bare Vietnamese monosyllables fire
+            # inside unrelated compounds, so the vi vocabulary is authored once,
+            # here, in compound form, rather than per-campaign.
+            if language == "vi" and "key_vi" in shell:
+                key_val = shell["key_vi"]
+            else:
+                key_val = shell["key"]
+                if isinstance(key_val, str):
+                    # array placeholder on its own — render via the whole-field path
+                    key_val = json.loads(render_template_text(f'"{key_val}"', bindings)) \
+                        if key_val.startswith("«") else render_template_text(key_val, bindings)
             entry_shell = {
                 "comment": rendered_comment, "content": rendered_content, "key": key_val,
                 "constant": shell["constant"], "position": shell["position"], "depth": shell["depth"],
@@ -579,6 +618,15 @@ def cmd_render(args):
             assert_lore_entry_complete(entry, entry_defaults, "lore/specific")
             entries[str(uid)] = entry
             uid += 1
+
+        if language == "vi":
+            for uid_s, entry in entries.items():
+                bare = [k for k in entry.get("key", []) if isinstance(k, str) and k.strip().lower() in VI_BARE_KEYS]
+                if bare:
+                    raise AssertionFailed(
+                        f"lore entry {uid_s} ({entry.get('comment','?')[:40]}): bare Vietnamese keys {bare} "
+                        "fire inside other words — use compound forms (con bò, con rắn, mực ống, sán dây)"
+                    )
 
         card_lorebook = {"name": char.get("name", "") + " Lore", "entries": entries}
         (out_dir / "card-lorebook.json").write_text(
@@ -669,6 +717,16 @@ def cmd_render(args):
         (out_dir / "sim-scenarios.json").write_text(sim_rendered, encoding="utf-8")
         summary.append(("sim-scenarios.json", "S1-S8"))
 
+    # ---- language switch state (read by the SKILL's Phase-3 dispatch step) ----
+    if want("lang"):
+        lang_state = {
+            "language": language,
+            "lang_vi_enabled": language == "vi",
+            "openai_max_tokens": 6144 if language == "vi" else 4096,
+        }
+        (out_dir / "lang.json").write_text(json.dumps(lang_state, indent=2, ensure_ascii=False), encoding="utf-8")
+        summary.append(("lang.json", f"language={language}, lang_vi_enabled={lang_state['lang_vi_enabled']}"))
+
     print(f"Rendered into {out_dir}")
     for name, note in summary:
         print(f"  {name}: {note}")
@@ -699,6 +757,7 @@ def derive_dispatch(recipe: dict) -> list:
     slug = recipe.get("slug"); char = recipe.get("char", {}); persona = recipe.get("persona", {})
     cname = char.get("name"); pname = persona.get("name"); kind = char.get("kind", "narrator")
     full = recipe.get("profile") == "full"
+    lang = recipe.get("language", "vi")
     rd = f"_scripts/{slug}/rendered"
     steps = [
         {"kind": "mcp", "args": "st_save_settings_path('extension_settings.note.default', '')", "why": "stale default Author's Note injects into every chat (joint bug #3)"},
@@ -714,10 +773,12 @@ def derive_dispatch(recipe: dict) -> list:
         steps.append({"kind": "skill", "args": f"/st-setup {cname} --from-recipe _scripts/{slug}/recipe.json --no-audit", "why": "embodied card or --full: SD baseline via st-setup"})
     steps += [
         {"kind": "mcp", "args": f"st_save_worldinfo('{cname}', <{rd}/card-lorebook.json>)", "why": "3 generic mechanics (Pressure Signature = the one constant)"},
-        {"kind": "skill", "args": f"/st-persona {pname} --new --from-recipe _scripts/{slug}/recipe.json" + (f" --avatar-file {persona.get('avatar',{}).get('file')}" if persona.get("avatar",{}).get("source") == "file" else ""), "why": "persona from recipe; activation writes BOTH user_avatar and persona_description_lorebook (joint bug #2)"},
-        {"kind": "skill", "args": f"/st-persona {pname} --voice", "why": "voice contract lives in global fields — always re-apply (joint bug #1)"},
+        {"kind": "skill", "args": f"/st-persona {pname} --new --from-recipe _scripts/{slug}/recipe.json --lang {lang}" + (f" --avatar-file {persona.get('avatar',{}).get('file')}" if persona.get("avatar",{}).get("source") == "file" else ""), "why": "persona from recipe; activation writes BOTH user_avatar and persona_description_lorebook (joint bug #2)"},
+        {"kind": "skill", "args": f"/st-persona {pname} --voice --lang {lang}", "why": "voice contract lives in global fields — always re-apply (joint bug #1)"},
         {"kind": "mcp", "args": f"st_save_worldinfo('{pname}', <{rd}/persona-lorebook.json>)", "why": "seed the Novelty Ledger constant so PHI check (7) has a target"},
-        {"kind": "skill", "args": f"/st-arc-plan --from-script _scripts/{slug}/bible.md#ch1 --from-recipe _scripts/{slug}/recipe.json --openers-to-card --scenarios {rd}/sim-scenarios.json", "why": "Direction ≤120 words + 3 openers into the card + sim gate S1–S8"},
+        {"kind": "mcp", "args": "language contract: enable lang_vi + set openai_max_tokens (vi) or disable lang_vi (en)", "why": "Playbook 5.51 — output language is a preset switch, not a per-message instruction"},
+        {"kind": "mcp", "args": f"illustration vars: extension_settings.variables.global.illust_prefix/illust_negative for '{pname}'", "why": "Playbook 5.50 follow-up — FREE-mode /sd needs the persona's identity+LoRA tags in globals"},
+        {"kind": "skill", "args": f"/st-arc-plan --from-script _scripts/{slug}/bible.md#ch1 --from-recipe _scripts/{slug}/recipe.json --openers-to-card --scenarios {rd}/sim-scenarios.json --lang {lang}", "why": "Direction ≤120 words + 3 openers into the card + sim gate S1–S8"},
     ]
     if full:
         steps.append({"kind": "agent", "args": f"Agent(model=haiku): /st-setup {cname} --expr", "why": "28 sprites, zero decisions"})
@@ -979,6 +1040,52 @@ def cmd_selftest(args):
         rc = cmd_validate(validate_ns)
         assert rc == 0, "validate should succeed on the fixture"
         print("selftest: validate OK")
+
+        # 2b. Vietnamese variant — the fixture is an English demo; swap the anchors and keys
+        # to Vietnamese and check the language plumbing end to end.
+        vi = json.loads(json.dumps(fixture))
+        vi["language"] = "vi"
+        vi["char"]["mes_example"] = ("<START>\n{{user}}: *Tôi ghi mẫu vào sổ. Tại nóng thôi.*\n"
+                                     "{{char}}: *Cô làm việc như cô làm mọi việc — quỳ bên lưới hút, tay áo ghim gọn.*\n"
+                                     "<START>\n{{user}}: \"Tại nóng thôi,\" tôi nói.\n{{char}}: *Cô không rút tay về.*")
+        vi["char"]["first_mes"] = "*Tờ biểu mẫu có một dòng cho nó. Dòng đó vẫn trống, vì bể lắng ấm.*"
+        for g in vi["lore"]["generic"]:
+            if g["id"] == "dominance":
+                g["keys"] = ["kiểm soát", "kháng cự", "thói quen"]
+            elif g["id"] == "irreversible":
+                g["keys"] = ["biến chất", "không thể đảo ngược", "phòng khám"]
+        vi_path = tmp / "recipe.vi.json"
+        vi_path.write_text(json.dumps(vi, ensure_ascii=False), encoding="utf-8")
+        vi_out = tmp / "rendered-vi"
+        rc = cmd_render(argparse.Namespace(recipe=str(vi_path), only=None, out=str(vi_out)))
+        assert rc == 0, "vi render should succeed"
+        lang_state = json.loads((vi_out / "lang.json").read_text(encoding="utf-8"))
+        assert lang_state == {"language": "vi", "lang_vi_enabled": True, "openai_max_tokens": 6144}, lang_state
+        pdesc = (vi_out / "persona-description.txt").read_text(encoding="utf-8")
+        assert "written in Vietnamese" in pdesc and "first person tôi" in pdesc and "own turns only" in pdesc, "voice block not labelled/Vietnamese"
+        gg = json.loads((vi_out / "gg.json").read_text(encoding="utf-8"))
+        assert "in Vietnamese" in gg["impersonation_prompt"] and "in Vietnamese" in gg["promptImpersonate1st"]
+        book = json.loads((vi_out / "card-lorebook.json").read_text(encoding="utf-8"))
+        shells = load_json(ASSETS / "lore/generic-mechanics.json")["entries"]
+        assert book["entries"]["0"]["key"] == shells[0]["key_vi"], "vi campaign must use the shell's key_vi"
+        print("selftest: vi variant OK — lang.json, labelled Vietnamese voice block, GG language line, key_vi")
+
+        bad = json.loads(json.dumps(vi)); bad["char"]["mes_example"] = fixture["char"]["mes_example"]
+        bad_path = tmp / "recipe.vi-english-anchor.json"; bad_path.write_text(json.dumps(bad, ensure_ascii=False), encoding="utf-8")
+        try:
+            cmd_render(argparse.Namespace(recipe=str(bad_path), only=None, out=str(tmp / "rendered-bad")))
+            raise SystemExit("selftest FAIL: vi recipe with an English mes_example rendered")
+        except AssertionFailed:
+            print("selftest: negative test OK — vi + English mes_example fails")
+
+        bare = json.loads(json.dumps(vi))
+        bare["lore"]["specific"] = [{"comment": "Cast — Taro", "content": "a dog", "key": ["Taro", "bò"], "constant": False}]
+        bare_path = tmp / "recipe.vi-bare-key.json"; bare_path.write_text(json.dumps(bare, ensure_ascii=False), encoding="utf-8")
+        try:
+            cmd_render(argparse.Namespace(recipe=str(bare_path), only=None, out=str(tmp / "rendered-bare")))
+            raise SystemExit("selftest FAIL: vi recipe with a bare monosyllabic key rendered")
+        except AssertionFailed:
+            print("selftest: negative test OK — bare Vietnamese key 'bò' fails")
 
         # 3. ledger novelty against a temp ledger copy
         global LEDGER

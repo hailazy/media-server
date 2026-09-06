@@ -21,7 +21,7 @@ Migrated from `ai-rp-stack` — now part of the home-server.
 - Network: `home-net` (external, shared with `home-forge`)
 - Image gen wired to Forge at `http://home-forge:7860` (Auto1111 extension, container DNS)
 - All character cards, chats, settings live in `./data/` (gitignored)
-- Claude skills (`.claude/skills/st-*`): `/st-cook "<idea>"` is the front door (idea → card + persona + lorebooks + Chapter-1 Direction + sim gate; `--close` archives a finished scenario); `/st-setup`, `/st-persona`, `/st-arc-plan`, `/st-arc-save`, `/st-audit` remain usable on their own. Card writes go through the st-mcp character tools (see PROMPT-PLAYBOOK 5.46).
+- Claude skills (`.claude/skills/st-*`): `/st-cook "<idea>"` is the front door (idea → card + persona + lorebooks + Chapter-1 Direction + sim gate; `--lang vi|en`, default vi, sets the campaign language end-to-end — PROMPT-PLAYBOOK 5.51; `--close` archives a finished scenario); `/st-setup`, `/st-persona`, `/st-arc-plan`, `/st-arc-save`, `/st-audit` remain usable on their own. Card writes go through the st-mcp character tools (see PROMPT-PLAYBOOK 5.46).
 
 ## Gotchas
 

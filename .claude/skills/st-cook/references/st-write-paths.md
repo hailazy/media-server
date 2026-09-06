@@ -115,6 +115,26 @@ run unverified — confirm the exact multipart field names against
 (`src/endpoints/characters.js`, `edit-avatar` handler) before using it, since this
 doc doesn't execute anything and can drift from the running container.
 
+## Reefs found shipping Vietnamese mode (2026-09-06)
+
+| Piece | Where it lives | How it's written |
+|---|---|---|
+| Language switch (the `lang_vi` custom prompt) | `settings.json` → `oai_settings.prompts` (list; the entry with `identifier == "lang_vi"`) | Read the whole list, flip that entry's `enabled` (`vi` → `true`, `en` → `false`), write the list back — `st_save_settings_path("oai_settings.prompts", <list>)`. If the entry doesn't exist yet, create it from `assets/preset/lang_vi.txt` (role `system`, `forbid_overrides: true`) first |
+| Language switch position | `settings.json` → `oai_settings.prompt_order[*].order` (one array per connection profile) | Same read-modify-write per profile: the `lang_vi` order entry's `enabled` flips the same way; it must stay LAST, after `illust_contract` |
+| Output length | `settings.json` → `oai_settings.openai_max_tokens` | `st_save_settings_path("openai_max_tokens", 6144)` for `vi` (leave the existing value for `en`) — computed directly from `recipe.language`, no rendered artifact |
+| Global impersonation voice | `settings.json` → `oai_settings.impersonation_prompt` | `st_save_settings_path(...)` — carries "in «LANGUAGE» — the language of the chat" |
+| Illustration identity | `settings.json` → `extension_settings.variables.global.illust_prefix` / `.illust_negative` | Read-merge-write `extension_settings.variables.global` in ONE `st_save_settings_path` call so other globals survive — `illust_prefix` built from persona `face_id` + body tags + always-on LoRAs, `illust_negative` from persona `negatives` |
+| Persona description (bracket-escaped) | `settings.json` → `power_user.persona_descriptions.["<Name> (Persona).png"].description` | `st_save_settings_path(...)` with the bracket-escape leaf (dot before `[` is optional, brackets are not) — carries the labelled `[Voice…]` block |
+
+Six write reefs (Playbook 5.51, verified 2026-09-06):
+
+1. **Close every ST client first** — Hải's browser tab and any headless CDP tab. An open client rewrites the card on its next chat switch (`openCharacterChat` → `/api/characters/edit` with its cached copy) and settings on any UI event; files written server-side survive, in-memory clients don't.
+2. **One `st_save_settings_path` per step, never parallel** — each call fetches the whole tree, sets one path, saves the whole tree back; two calls racing means the last writer wins and the other's change vanishes silently.
+3. **Verify on disk, not from the tool's "OK"** — the PNG `ccv3` tEXt chunk for cards, `settings.json` for settings; the tool call succeeding proves the request was accepted, not that a later write didn't clobber it.
+4. **Restart the container after preset/settings writes** — `./scripts/down.sh sillytavern && ./scripts/up.sh sillytavern` (~3 s). A fresh client can keep applying a stale `oai_settings` copy (`bind_preset_to_connection` re-applies what the running server still held) even though disk is already correct.
+5. **Verify with a read-only client** — a branch/trigger smoke to check behavior is itself a write (it opens a chat, which is a UI event); do it once, from a client that booted after the restart, then re-check disk.
+6. **Kill headless Chrome by PID** (`pgrep -f "user-data-dir=<unique dir>"`), never `pkill -f google-chrome` from the same script that launched it — the script's own command line matches the pattern and kills itself.
+
 ## Two more joint gotchas found on the first real cook (2026-08-31)
 
 4. **A persona switch has THREE fields, not two.** Besides `user_avatar` and

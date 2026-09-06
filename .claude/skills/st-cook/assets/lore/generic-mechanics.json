@@ -1,10 +1,11 @@
 {
-  "_about": "Shells of the three mechanics entries every /st-cook campaign needs, extracted from a played card's lorebook (uid 1 Progressive Dominance, uid 9 Irreversible Corruption, uid 11 Pressure Signature — a constant). cook.py render completes each shell against lore/entry.schema.json (uid, key, comment, content, constant, position, depth, order + every other ST field at its default) before st_save_worldinfo. A placeholder that is the ENTIRE value of a JSON field (e.g. \"key\": \"«KEYS_DOMINANCE»\") renders to a JSON array, not a quoted string — see 'Array placeholders' in scripts/cook.py. Values embedded inside a content string (e.g. «CREATURE_NOUN» inline) render as plain text substitution.",
+  "_about": "Shells of the three mechanics entries every /st-cook campaign needs, extracted from a played card's lorebook (uid 1 Progressive Dominance, uid 9 Irreversible Corruption, uid 11 Pressure Signature — a constant). cook.py render completes each shell against lore/entry.schema.json (uid, key, comment, content, constant, position, depth, order + every other ST field at its default) before st_save_worldinfo. A placeholder that is the ENTIRE value of a JSON field (e.g. \"key\": \"«KEYS_DOMINANCE»\") renders to a JSON array, not a quoted string — see 'Array placeholders' in scripts/cook.py. Values embedded inside a content string (e.g. «CREATURE_NOUN» inline) render as plain text substitution. `key_vi` (2026-09-06, Playbook 5.51): fixed compound-form Vietnamese vocabulary for this shared mechanic — used verbatim (no template pass) instead of the English `key` binding whenever recipe.language == 'vi', because these three constants describe the corruption ENGINE itself, not campaign nouns, so their trigger words don't vary per campaign the way lore.specific does. Compound forms only, per the Vietnamese key rule (ST's whole-word match is `(?:^|\\W)key(?:$|\\W)`, and bare Vietnamese monosyllables fire inside unrelated compounds).",
   "entries": [
     {
       "id": "dominance",
       "comment": "Progressive Dominance — ratchet-only; it never argues, «HOST_PRONOUN» own standards push",
       "key": "«KEYS_DOMINANCE»",
+      "key_vi": ["kiểm soát", "mất kiểm soát", "trạng thái mê muội", "kháng cự", "chống cự", "thói quen"],
       "constant": false,
       "position": 4,
       "depth": 4,
@@ -15,6 +16,7 @@
       "id": "irreversible",
       "comment": "Irreversible Corruption — host permanently altered, no antidote",
       "key": "«KEYS_IRREVERSIBLE»",
+      "key_vi": ["tha hóa", "biến chất", "không thể đảo ngược", "chữa khỏi", "phòng khám"],
       "constant": false,
       "position": 4,
       "depth": 4,
@@ -25,6 +27,7 @@
       "id": "pressure-signature",
       "comment": "Pressure Signature — wordless channel; its will surfaces as «HOST_PRONOUN» own thought (CONSTANT)",
       "key": [],
+      "key_vi": [],
       "constant": true,
       "position": 4,
       "depth": 4,

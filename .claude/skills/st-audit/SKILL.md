@@ -121,6 +121,15 @@ Read-only. Covers preset↔card precedence, card chunk consistency, lorebook `{{
 - Report personas by avatar key, not display name — names are not unique and the avatar-keyed `persona_descriptions[<avatar>].description` is authoritative for visuals. When a display name maps to more than one avatar, flag it: any `identity-baselines/<DisplayName>.txt` is ambiguous for that pair. Leaf keys ending `.png` need the bracket form — see Mode 2.
 - `user_avatar` (top-level key, not `power_user.user_avatar`) can be `null`, meaning no persona is currently selected — report that state rather than showing a blank field.
 
+**[8] Language (vi campaigns)** (`oai_settings.prompts`, `oai_settings.prompt_order`, active card, persona, lorebooks)
+- `lang_vi` entry present + `enabled` ⇔ campaign is Vietnamese — the single source of truth for campaign language when no `--lang` flag or recipe is given
+- `lang_vi` LAST in every `oai_settings.prompt_order[*].order` — an earlier position reads "write Vietnamese" as an instruction to translate whatever follows it (gotcha 5.51 leak)
+- `openai_max_tokens` ≥ 6144 when vi — Vietnamese runs ~2 tok/word vs ~1.25 for English, truncates mid-page below that
+- active card `mes_example`/`first_mes` carry Vietnamese diacritics when vi — the voice anchor must already be in the target language or the model under-anchors and drifts back to English
+- active persona's `[Voice — …]` description block + `oai_settings.impersonation_prompt` name Vietnamese explicitly — a bare "write Vietnamese" with no POV line breaks {{user}}'s turns to third person or the narrator's to first
+- `power_user.persona_description_lorebook` + the card's linked world: every keyed entry has a Vietnamese key, and none is a bare monosyllable (bò, cá, rắn, mực, sán, gián, ong, bọ, dê, ốc) — ST whole-word match splits on `\W`, so a monosyllable fires inside unrelated compounds
+- Executable version of this whole category: `python3 st-setup/scripts/audit-config.py --only language`
+
 ### Output format
 
 ```
@@ -145,6 +154,13 @@ Read-only. Covers preset↔card precedence, card chunk consistency, lorebook `{{
 ### 🔴 Extensions
 - DISABLED: <union of disabledExtensions and per-extension disabled flags, or "none">
 - ENABLED, notable: LALib (backs the /dom summarize workaround), GuidedGenerations-Extension
+
+### 🟢 Language (vi)
+- lang_vi: enabled, LAST in prompt_order ✓
+- openai_max_tokens: 6144 ✓ (vi threshold)
+- mes_example/first_mes: Vietnamese diacritics ✓
+- voice block + impersonation_prompt: name Vietnamese ✓
+- lorebook keys: compound forms, no bare monosyllables ✓
 
 ### Connection Profiles
 | Name | Preset | Model | API |
@@ -210,6 +226,7 @@ Parse natural language goal. Match against known goal categories:
 | "context window" / "token budget" | max_context, response_length, summary depth, lorebook entry budgets |
 | "persona setup" / "user persona" | power_user.personas, persona_descriptions, user_avatar, linked lorebook |
 | "lorebook" / "world info" | worlds/*.json, character lorebook linkage, depth, position, scanDepth |
+| "tiếng Việt" / "language" / "POV tôi" / "xưng hô" | Language category (above) + Playbook 5.51 |
 
 For each match, output:
 1. Current state of relevant settings (live read)
@@ -271,6 +288,12 @@ Embedded so skill works without re-reading PROMPT-PLAYBOOK every invocation. Upd
 - LALib provides `/dom`, `/regex`, `/runc`, `/db`, `/fetch`, etc.
 - GuidedGenerations adds Quick Reply hooks on GENERATION_AFTER_COMMANDS
 
+**Language (vi campaigns)**
+- The switch lives in one place: `lang_vi`, a preset custom prompt phrased as a switch ("from this page on, write in Vietnamese…"), LAST in `prompt_order` — not a language field anywhere else.
+- Only output-shaping anchors (`mes_example`, `first_mes`, persona `[Voice…]` block, `impersonation_prompt`) follow campaign language; the instruction layer (system_prompt, lore content, Direction) stays English regardless.
+- Lorebook keys go in compound forms (*con bò*, not *bò*) — ST's whole-word regex splits on `\W`, so bare Vietnamese monosyllables fire inside unrelated words.
+- Write reefs (Playbook 5.51): one settings write at a time, close every ST tab first, verify on disk not on the tool's "OK", restart the container after preset writes.
+
 **Persona vs Character**
 - char_prompts has NO persona equivalent → visual tags must embed in `persona_descriptions[avatar].description` text
 - Active persona = TOP-LEVEL `user_avatar` in settings.json (filename of avatar PNG). It is NOT under `power_user` — `power_user.user_avatar` resolves to null even while a persona is active.
@@ -309,3 +332,4 @@ For any mode:
 | Setting key ambiguous in mode 2 | List candidates, ask user to pick. |
 | Goal text doesn't match any category | Show available categories, ask user to rephrase or pick closest. |
 | PROMPT-PLAYBOOK.md missing | Skill still works using built-in knowledge above; note playbook unavailable. |
+| `lang_vi` present but disabled while card anchors (mes_example/first_mes) are Vietnamese, or the reverse | Report as a mismatch between the language switch and the campaign's actual anchors; do not auto-fix. |

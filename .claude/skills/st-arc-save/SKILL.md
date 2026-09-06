@@ -85,6 +85,8 @@ Detect char (only matters for `--char-bound`):
 If `arc_title` not provided:
 - AskUserQuestion: "Arc title? (e.g., 'Subway Encounter', 'Arc 2 — Family Reunion')"
 
+Detect campaign language — no flag, arc-save reads the live state: `st_get_settings(path="oai_settings.prompts")` — an entry with identifier `lang_vi` and `enabled: true` means the campaign is `vi`, else `en`. This governs Phase 3's Trigger Keywords and the address-pair guidance below; the Established State and Arc N prose stay English regardless.
+
 ---
 
 ## Phase 1: Read the Chat Log
@@ -192,6 +194,8 @@ From the chat log (plus `established_old`), produce 2 distinct outputs.
 
 ### Established State (cumulative facts, ~150 words)
 
+Content stays English regardless of campaign language — it's the instruction layer, not a page the model imitates.
+
 **Inputs: the chat log AND `established_old` from Phase 2.** This entry is cumulative across every arc — compose the NEW version by merging the old content with what this arc changed. Writing it from this arc alone silently erases every fact arcs 1..N-1 established, which is exactly the loss this entry exists to prevent. When `established_old` is non-empty, start from it: keep every fact the new arc didn't change, update the ones it did, append the new ones.
 
 Cover only state that *changes across arcs* — bond/relationship state, location, persistent conditions (pregnancies, transformations, oaths), compressed cumulative effects. Identity and appearance already live in `persona_descriptions[<avatar>].description`, which injects on every turn regardless; restating them here pays for the same tokens twice (same one-rule-one-home discipline as `/st-setup`'s lorebook phase).
@@ -212,7 +216,9 @@ The composed content REPLACES the old entry body in Phase 4 — which is why the
 
 ### Arc N — {Title} (event log, ~300-500 words)
 
-Convert the Plot Events + Character State + Open Threads sections into chronological numbered list with bold section headers.
+Content stays English regardless of campaign language — same reasoning as Established State.
+
+Convert the Plot Events + Character State + Open Threads sections into chronological numbered list with bold section headers. When `vi`, add a "Xưng hô (tiếng Việt)" line for every person newly named this arc (who calls whom what, and the narration form) — the language contract tells the model "the cast entries state the pairs", so this is where that promise gets kept.
 
 **Structure:**
 ```
@@ -231,8 +237,8 @@ Convert the Plot Events + Character State + Open Threads sections into chronolog
 
 Extract distinctive content terms from summary:
 - Proper nouns (names of NPCs encountered, locations, items)
-- Theme keywords (in both English + Vietnamese — Hai uses both)
-- Backstory triggers ("first encounter", "lần đầu", "remember when", "nhớ lúc", "the past", "hồi đó")
+- Theme keywords, in the campaign language only: for `vi`, Vietnamese keys, compound forms — ST's whole-word match (`(?:^|\W)key(?:$|\W)`) splits Vietnamese syllables on `\W`, so bare monosyllables fire inside other words (*bò* in *bò sát*, *cá* in *cá nhân*, *rắn* in *rắn chắc*, *mực* = ink, *sán* in *sán lại*, *gián* in *gián đoạn* — use *con bò, con rắn, mực ống, sán dây, con gián*); keep proper nouns and Japanese loanwords; no English keys (the model writes none in a `vi` campaign, so they'd never fire). For `en`, English keys as before.
+- Backstory triggers ("first encounter", "remember when", "the past" — or their `vi` equivalents: "lần đầu", "nhớ lúc", "hồi đó")
 - Specific arc references ("arc {N}", "{Title}")
 
 Avoid:
@@ -321,7 +327,8 @@ for uid, e in entries.items():
 
 # Novelty Ledger — one row per chapter so the narrator never repeats a configuration.
 # Compose `ledger_row` from the chat (form of the creature · orifice · partner config ·
-# setting · register · dissociation) — one line, ≤ 25 words.
+# setting · register · dissociation) — one line, ≤ 25 words. Stays English regardless
+# of campaign language, same as Established State and the Arc N entry.
 for uid, e in entries.items():
     if 'Novelty Ledger' in e.get('comment', ''):
         e['content'] = e['content'].replace('(none yet — Chapter 1 not played)', '').rstrip() + f"\n- {arc_label}: {ledger_row}"
@@ -382,6 +389,7 @@ if not char_bound and not target_exists:
 ```
 === Arc Saved: {target_name} → Arc {N} — {arc_title} ===
 
+language: {vi|en}
 ✓ Established State entry: {UPDATED | CREATED} (constant=true, ~{N} words)
 ✓ Arc {N} entry: APPENDED (selective=true, {M} keys, ~{P} words)
 ✓ Lorebook: worlds/{target_name}.json ({total} entries total)

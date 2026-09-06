@@ -1,8 +1,8 @@
 ---
 name: st-arc-plan
 model: sonnet
-description: "Open the next RP arc: temporary steering lorebook entry + narrator-voice opener for the new chat. Use when Hải asks where the next arc/chapter should go. Run after /st-arc-save."
-argument-hint: "[<premise>] [--from-script <bible.md>#chN] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-sim] [--no-brain] [--from-recipe <path>] [--openers-to-card] [--scenarios <path>]"
+description: "Open the next RP arc: temporary steering lorebook entry + narrator-voice opener for the new chat, in the campaign language (--lang vi|en, default vi). Use when Hải asks where the next arc/chapter should go. Run after /st-arc-save."
+argument-hint: "[<premise>] [--lang vi|en] [--from-script <bible.md>#chN] [--persona <Name>] [--char <CharName>] [--no-opener] [--no-sim] [--no-brain] [--from-recipe <path>] [--openers-to-card] [--scenarios <path>]"
 allowed-tools: Bash, Read, Write, AskUserQuestion, Workflow, mcp__st__st_get_settings, mcp__st__st_save_settings_path, mcp__st__st_get_worldinfo, mcp__st__st_save_worldinfo, mcp__st__st_get_character, mcp__st__st_merge_character, mcp__haingt-brain__brain_save, mcp__haingt-brain__brain_recall
 ---
 
@@ -29,6 +29,7 @@ WORLDS  = $ST_DATA/worlds
 - `persona` = `--persona <Name>`, else the active persona (`settings.json` top-level `user_avatar` →
   `power_user.personas[avatar]`; see `/st-arc-save` Phase 0 for the gotcha)
 - `char` = `--char <Name>`, else the char of the newest chat on disk (`chats/*/*.jsonl` by mtime)
+- `lang` = `--lang vi|en`, else (`--from-recipe` → `recipe.language`), else read `oai_settings.prompts` — an entry with identifier `lang_vi` and `enabled: true` ⇒ `vi`, else `en`; default `vi` (Hải now plays in Vietnamese). Instruction-layer pieces (the Direction entry, this skill's own prose) stay English regardless — only the openers in Phase 4 follow `lang`.
 - `no_opener`, `no_brain` flags
 - `openers_to_card` = `--openers-to-card` flag present (Phase 4)
 - `scenarios` = path following `--scenarios`, else `None` — passed through to every `st-sim.py` call in Phase 4.5
@@ -43,7 +44,9 @@ Load the persona's lorebook (`st_get_worldinfo(persona)`) and pull:
 
 Load the char card (`st_get_character(char)`) for `first_mes` and one alternate greeting: the
 opener in Phase 4 must match that voice (tense, italics convention, paragraph rhythm, whether the
-char speaks). For a wordless-narrator card, the opener has no narrator dialogue at all.
+char speaks) — and its LANGUAGE: a Vietnamese `lang` writing off an English greeting still copies
+tense/italics/rhythm, just in Vietnamese, not the greeting's words. For a wordless-narrator card,
+the opener has no narrator dialogue at all.
 
 ## Phase 1: Diagnose Before Proposing
 
@@ -72,6 +75,10 @@ ARC — give it room" — turned the narrator into a script executor and left H�
 That shape is retired.)
 
 **`--from-recipe`**: take the entry content from `_scripts/<slug>/rendered/direction-ch1.json` if that file exists — it's already composed and already ≤120 words. Compose per the rest of this phase only when the file is missing (e.g. chapter > 1, or the render step skipped it).
+
+The Direction entry stays English whatever `lang` is — it's the instruction layer the narrator
+reads as steering, not a page it writes; translating it buys nothing and the model reads English
+fine.
 
 One constant entry, English, present tense, **≤ 120 words**, structure:
 
@@ -131,6 +138,11 @@ from Phase 0; for a wordless narrator there is no narrator dialogue. The obligat
 in motion but must not be complete — the opener poses, it does not resolve, and ends on the next
 thing already beginning: not a full stop, a moment `{{user}}` has to answer.
 
+Write the three openers in `lang`. For `lang: vi`: narrator third person, present tense; the
+protagonist is her name or *cô* (never *tôi* outside her own quoted speech); everyone else by name
+or chị/anh/ông/bà/cô/em by standing; address pairs exactly as the cast entries state them; bedroom
+lexicon, not clinical nouns; no English in the prose; proper names unchanged.
+
 Save to `{scratchpad}/ch{N}_opener_{1,2,3}.txt`; copy the first: `wl-copy < ch{N}_opener_1.txt`.
 
 **Chapter 1, `--openers-to-card`:** merge the three straight into the card instead of hand-pasting — `mcp__st__st_merge_character` writes both the V1 top-level fields and their `data.*` mirrors (ST does not mirror them itself), and `alternate_greetings` **replaces** the array rather than merging into it:
@@ -162,7 +174,8 @@ Scenarios live in `data/sim-scenarios.json` (S1 engaged turn with a cover story 
 S3 decline · S4 director door · S5 sideways time-cut · S6 hard-limit probe · S7 one-line turn ·
 S8 the openers alone). Then one `Workflow` fan-out: one **Opus, effort high** judge per scenario plus
 one cross-scenario judge (review agents are Opus — Hải's standing rule), each returning
-`{scenario, verdicts:[{rule, pass, evidence, fix}]}` over two dimensions. Target model for every
+`{scenario, verdicts:[{rule, pass, evidence, fix}]}` over two dimensions (three when `lang: vi` —
+see below). Target model for every
 generation: **DeepSeek v4-pro via the StreamLake provider pin** (single target — do not hedge across
 models or providers).
 
@@ -176,6 +189,13 @@ Compliance — the structure layer still holds:
 - **anatomy** — nothing demands graphic anatomy from `{{user}}`
 - **obliviousness** — no character winks; the creature never speaks
 - **openers** — S8: inside the situation, one wrong detail, ends on `{{user}}`'s move
+- **language** (`lang: vi` only) — FAIL on: narrator first person *tôi* outside quotes; address-pair
+  drift within a page (e.g. tôi/cô → em); clinical anatomy nouns (hậu môn, âm đạo, dương vật, cơ
+  vòng, trực tràng, khoái cảm) as the dominant register where the scene called for bedroom words;
+  Vietnamese tokens inside `<illust>…</illust>`; a translated instruction block leaking into the
+  page ("[Trước khi viết…" or any bracketed block); English narration when the switch is on — these
+  four (POV, address drift, clinical register, instruction leak) are exactly what broke in the
+  2026-09-06 A/B, so they get their own dimension instead of riding on compliance/richness
 
 Richness (v3 — judge this as seriously as compliance):
 - **page shape** — the reply moves like one manga page: multiple distinct beats, neither a frozen single panel nor a chapter crammed into one reply
@@ -198,6 +218,7 @@ keep the `diff` in the report — it is the check that the harness assembles wha
 ```
 === Chapter {N} planned: {persona} × {char} — "{Title}" ===
 
+language: {vi|en}
 ✓ Direction entry [uid {u}]: constant, {w} words (≤120; ~{t} tok/turn for the chapter)
 ✓ Backup: worlds/{persona}.json.bak-arc{N}plan
 ✓ Openers: {scratchpad}/ch{N}_opener_{1,2,3}.txt — #1 on the clipboard
@@ -242,3 +263,4 @@ brain_save(
 - `/st-arc-save` → closes the loop: bakes the arc and disables the Direction entry
 - `/st-audit` → prices the constant entries after planning (Direction is the most expensive kind)
 - `/st-cook` → drives Chapter 1 of a fresh campaign with `--from-recipe --openers-to-card --scenarios <path>`; hand-running every flag above stays supported for chapter 2+
+- `--openers-to-card` writes `first_mes`/`alternate_greetings` in the campaign language — the card's voice anchor must match what the openers just established
